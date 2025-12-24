@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import {
   collection,
   addDoc,
@@ -19,16 +19,22 @@ import {
   Button,
   CircularProgress,
   IconButton,
+  AppBar,
+  Toolbar,
+  Avatar,
+  Paper,
 } from "@mui/material";
-import { Send, PhotoCamera, CloudUpload, Videocam } from "@mui/icons-material";
+import { Send, PhotoCamera, CloudUpload, Videocam, ArrowBack } from "@mui/icons-material";
 
 export default function ChatRoom() {
   const { pairId } = useParams();
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState("");
+  const [partnerEmail, setPartnerEmail] = useState("");
   const bottomRef = useRef(null);
 
   const fileInputRef = useRef(null);
@@ -65,6 +71,23 @@ export default function ChatRoom() {
       unsubMessages();
     };
   }, [pairId]);
+
+  // fetch partner email for header display
+  useEffect(() => {
+    if (!pairId || !auth.currentUser) return;
+    const ids = pairId.split("_");
+    const partnerId = ids.find((id) => id !== auth.currentUser?.uid);
+    if (!partnerId) return;
+    (async () => {
+      try {
+        const pDoc = await getDoc(doc(db, "users", partnerId));
+        if (pDoc.exists()) setPartnerEmail(pDoc.data().email || partnerId);
+        else setPartnerEmail(partnerId);
+      } catch (e) {
+        setPartnerEmail(partnerId);
+      }
+    })();
+  }, [pairId, user]);
 
   const sendMessage = async () => {
     if (!newMessage.trim()) return;
@@ -166,118 +189,129 @@ export default function ChatRoom() {
     );
 
   return (
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        minHeight: "100vh",
-        p: 2,
-        background: "linear-gradient(135deg, #c9e4ff 0%, #e0f7fa 100%)",
-      }}
-    >
-      {/* Messages Area */}
+    <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+      <AppBar position="static" color="primary" elevation={1}>
+        <Toolbar>
+          <IconButton edge="start" color="inherit" onClick={() => navigate(-1)}>
+            <ArrowBack />
+          </IconButton>
+          <Avatar sx={{ width: 36, height: 36, mr: 1, bgcolor: "secondary.main" }}>
+            {partnerEmail ? partnerEmail.charAt(0).toUpperCase() : "B"}
+          </Avatar>
+          <Box>
+            <Typography variant="subtitle1">{partnerEmail || "Chat"}</Typography>
+            <Typography variant="caption" color="inherit">Open conversation</Typography>
+          </Box>
+        </Toolbar>
+      </AppBar>
+
       <Box
         sx={{
           flex: 1,
           overflowY: "auto",
-          mb: 1,
-          px: 1,
+          p: 2,
+          background: "linear-gradient(135deg, #f6fbff 0%, #eef7f9 100%)",
         }}
       >
         {messages.map((msg) => (
           <Box
             key={msg.id}
-            sx={{
-              display: "flex",
-              justifyContent: msg.senderId === user?.uid ? "flex-end" : "flex-start",
-              mb: 1.5,
-            }}
+            sx={{ display: "flex", mb: 1.5, alignItems: "flex-end", gap: 1 }}
           >
-            <Box
-              sx={{
-                background: msg.senderId === user?.uid ? "#0078ff" : "#e6e6e6",
-                color: msg.senderId === user?.uid ? "white" : "black",
-                borderRadius: "15px",
-                p: 1,
-                maxWidth: "70%",
-                wordWrap: "break-word",
-              }}
-            >
-              {msg.type === "image" ? (
-                <img
-                  src={msg.image}
-                  alt="sent"
-                  style={{ maxWidth: "100%", borderRadius: 10 }}
-                />
-              ) : msg.type === "video" ? (
-                <video
-                  src={msg.video}
-                  controls
-                  style={{ maxWidth: "100%", borderRadius: 10 }}
-                />
-              ) : (
-                <Typography sx={{ fontSize: 14 }}>{msg.text}</Typography>
-              )}
+            {msg.senderId !== user?.uid && (
+              <Avatar sx={{ bgcolor: "primary.light", width: 36, height: 36 }}>
+                {msg.senderEmail ? msg.senderEmail.charAt(0).toUpperCase() : "U"}
+              </Avatar>
+            )}
+
+            <Box sx={{ display: "flex", flexDirection: "column", alignItems: msg.senderId === user?.uid ? "flex-end" : "flex-start", width: "100%" }}>
+              <Paper
+                elevation={0}
+                sx={{
+                  background: msg.senderId === user?.uid ? "linear-gradient(90deg,#3b82f6,#1e40af)" : "#f5f5f5",
+                  color: msg.senderId === user?.uid ? "#fff" : "#111",
+                  borderRadius: 2,
+                  px: 1.2,
+                  py: 0.8,
+                  maxWidth: "78%",
+                  boxShadow: msg.senderId === user?.uid ? "0 2px 8px rgba(30,64,175,0.12)" : "none",
+                }}
+              >
+                {msg.type === "image" ? (
+                  <img src={msg.image} alt="sent" style={{ maxWidth: "100%", borderRadius: 8 }} />
+                ) : msg.type === "video" ? (
+                  <video src={msg.video} controls style={{ maxWidth: "100%", borderRadius: 8 }} />
+                ) : (
+                  <Typography sx={{ fontSize: 14, whiteSpace: "pre-wrap" }}>{msg.text}</Typography>
+                )}
+              </Paper>
+
+              <Typography variant="caption" sx={{ mt: 0.5, color: "text.secondary" }}>
+                {msg.senderEmail ? msg.senderEmail : ""} • {formatTime(msg.timestamp)}
+              </Typography>
             </Box>
+
+            {msg.senderId === user?.uid && (
+              <Avatar sx={{ bgcolor: "primary.main", width: 36, height: 36 }}>
+                {msg.senderEmail ? msg.senderEmail.charAt(0).toUpperCase() : "M"}
+              </Avatar>
+            )}
           </Box>
         ))}
         <div ref={bottomRef} />
       </Box>
 
-      {/* Input + icons */}
-      <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
-        <TextField
-          fullWidth
-          placeholder="Type a message..."
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          size="small"
-        />
+      <Paper sx={{ p: 1.25, position: "sticky", bottom: 0 }} elevation={3}>
+        <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
+          <TextField
+            fullWidth
+            placeholder="Type a message..."
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+            size="small"
+          />
 
-        <input
-          type="file"
-          accept="image/*,video/*"
-          ref={fileInputRef}
-          style={{ display: "none" }}
-          onChange={handleFileUpload}
-        />
-        <IconButton size="small" onClick={() => fileInputRef.current.click()}>
-          <CloudUpload fontSize="small" />
-        </IconButton>
+          <input
+            type="file"
+            accept="image/*,video/*"
+            ref={fileInputRef}
+            style={{ display: "none" }}
+            onChange={handleFileUpload}
+          />
+          <IconButton size="small" onClick={() => fileInputRef.current.click()}>
+            <CloudUpload fontSize="small" />
+          </IconButton>
 
-        <input
-          type="file"
-          accept="image/*"
-          capture="environment"
-          ref={cameraInputRef}
-          style={{ display: "none" }}
-          onChange={handleFileUpload}
-        />
-        <IconButton size="small" onClick={() => cameraInputRef.current.click()}>
-          <PhotoCamera fontSize="small" />
-        </IconButton>
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            ref={cameraInputRef}
+            style={{ display: "none" }}
+            onChange={handleFileUpload}
+          />
+          <IconButton size="small" onClick={() => cameraInputRef.current.click()}>
+            <PhotoCamera fontSize="small" />
+          </IconButton>
 
-        <input
-          type="file"
-          accept="video/*"
-          capture="camcorder"
-          ref={videoCameraRef}
-          style={{ display: "none" }}
-          onChange={handleFileUpload}
-        />
-        <IconButton size="small" onClick={() => videoCameraRef.current.click()}>
-          <Videocam fontSize="small" />
-        </IconButton>
+          <input
+            type="file"
+            accept="video/*"
+            capture="camcorder"
+            ref={videoCameraRef}
+            style={{ display: "none" }}
+            onChange={handleFileUpload}
+          />
+          <IconButton size="small" onClick={() => videoCameraRef.current.click()}>
+            <Videocam fontSize="small" />
+          </IconButton>
 
-        <Button
-          variant="contained"
-          sx={{ minWidth: "50px", py: 0.7 }}
-          onClick={sendMessage}
-        >
-          <Send fontSize="small" />
-        </Button>
-      </Box>
+          <Button variant="contained" sx={{ minWidth: "50px", py: 0.7 }} onClick={sendMessage}>
+            <Send fontSize="small" />
+          </Button>
+        </Box>
+      </Paper>
     </Box>
   );
 }

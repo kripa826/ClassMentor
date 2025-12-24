@@ -1,11 +1,16 @@
 // src/App.js
 import React, { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import Login from "./Login";
-import Dashboard from "./pages/Dashboard";
+
+import Login from "./pages/Login";
+import Signup from "./pages/Signup";
+import BirdDashboard from "./pages/BirdDashboard";
+import BuddyDashboard from "./pages/BuddyDashboard";
 import ChatRoom from "./pages/ChatRoom";
 import AdminDashboard from "./pages/AdminDashboard";
 import CreatePair from "./pages/CreatePair";
+import Profile from "./pages/Profile";
+
 import { auth, db } from "./firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
@@ -15,7 +20,7 @@ function App() {
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // ✅ Listen for auth + fetch role
+  // ✅ Listen for auth state + fetch role
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
@@ -41,7 +46,7 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // Simple loading screen
+  // ⏳ Global loading screen
   if (loading) {
     return (
       <div
@@ -59,26 +64,36 @@ function App() {
     );
   }
 
+  // 🔁 Helper redirect after login
+  const redirectAfterLogin = () => {
+  if (role === "superbird") return <Navigate to="/admin" replace />;
+  if (role === "bird") return <Navigate to="/bird-dashboard" replace />;
+  if (role === "buddy") return <Navigate to="/buddy-dashboard" replace />;
+  return <Navigate to="/login" replace />;
+};
+
+
   return (
     <Router>
       <Routes>
-        {/* 🟢 Login */}
+
+        {/* 🔐 LOGIN */}
         <Route
           path="/login"
           element={
-            user ? (
-              role === "superbird" ? (
-                <Navigate to="/admin" replace />
-              ) : (
-                <Navigate to="/dashboard" replace />
-              )
-            ) : (
-              <Login />
-            )
+            user ? redirectAfterLogin() : <Login />
           }
         />
 
-        {/* 🦅 Super Bird Dashboard */}
+        {/* ✨ SIGN UP */}
+        <Route
+          path="/signup"
+          element={
+            user ? redirectAfterLogin() : <Signup />
+          }
+        />
+
+        {/* 🦅 SUPER BIRD ADMIN DASHBOARD */}
         <Route
           path="/admin"
           element={
@@ -90,31 +105,18 @@ function App() {
           }
         />
 
-        {/* 🪶 Bird / 🐥 Buddy Dashboard */}
-        <Route
-          path="/dashboard"
-          element={
-            user && role !== "superbird" ? (
-              <Dashboard />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
+        {/* 🪶 BIRD / 🐥 BUDDY DASHBOARD */}
+        
 
-        {/* 💬 Chat Room */}
+        {/* 💬 CHAT ROOM (ALL AUTH USERS) */}
         <Route
           path="/chat/:pairId"
           element={
-            user ? (
-              <ChatRoom />
-            ) : (
-              <Navigate to="/login" replace />
-            )
+            user ? <ChatRoom /> : <Navigate to="/login" replace />
           }
         />
 
-        {/* ➕ Create Pair (only for Super Bird) */}
+        {/* ➕ CREATE PAIR (SUPER BIRD ONLY) */}
         <Route
           path="/createpair"
           element={
@@ -126,8 +128,35 @@ function App() {
           }
         />
 
-        {/* Default route */}
+        {/* 🌐 FALLBACK */}
         <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route
+  path="/profile"
+  element={user ? <Profile /> : <Navigate to="/login" replace />}
+/>
+<Route
+  path="/bird-dashboard"
+  element={
+    user && role === "bird" ? (
+      <BirdDashboard />
+    ) : (
+      <Navigate to="/login" replace />
+    )
+  }
+/>
+
+<Route
+  path="/buddy-dashboard"
+  element={
+    user && role === "buddy" ? (
+      <BuddyDashboard />
+    ) : (
+      <Navigate to="/login" replace />
+    )
+  }
+/>
+
+
       </Routes>
     </Router>
   );
