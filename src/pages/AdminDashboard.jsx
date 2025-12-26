@@ -598,7 +598,7 @@ const getBuddyEmail = (buddyId) =>
                   </Box>
                 </Stack>
                 <Chip
-                  label={`${pairs.length} pairs`}
+                  label={`${pairs.length} assigned`}
                   size="small"
                   sx={{ bgcolor: GLASS_GRADIENTS.teal.chipBg, color: "#082020", fontWeight: 700 }}
                 />
@@ -661,27 +661,20 @@ const getBuddyEmail = (buddyId) =>
           <motion.div variants={statCardVariant} initial="hidden" animate="show" style={{ flex: 1 }}>
             <GlassCard
               sx={{
-                width: { xs: "100%", md: "92%" },
-                maxWidth: 360,
-                mx: "auto",
                 backgroundImage: GLASS_GRADIENTS.yellow.background,
                 backgroundBlendMode: "normal, soft-light, overlay",
                 color: GLASS_GRADIENTS.yellow.text,
                 borderRadius: 12,
                 border: GLASS_GRADIENTS.yellow.border,
-                px: 2,
-                py: 1.25,
-                overflow: "visible",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "center",
-                height: "100%",
+                p: 2,
                 boxShadow: "0 10px 32px rgba(80,50,0,0.12), inset 0 -6px 18px rgba(255,255,255,0.03)",
                 backdropFilter: "blur(8px) saturate(110%)",
+                width: "100%",
+                maxWidth: 380,
                 minHeight: 120,
               }}
             >
-              <Typography variant="subtitle2" color="rgba(0,0,0,0.6)" sx={{ mb: 1 }}>
+              <Typography variant="subtitle2" color="rgba(255,255,255,0.9)" sx={{ mb: 1 }}>
                 Quick Actions
               </Typography>
 
