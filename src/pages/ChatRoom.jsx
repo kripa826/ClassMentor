@@ -25,6 +25,17 @@ import {
   Paper,
 } from "@mui/material";
 import { Send, PhotoCamera, CloudUpload, Videocam, ArrowBack } from "@mui/icons-material";
+import ReportIcon from "@mui/icons-material/Report";
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+} from "@mui/material";
+import { REPORT_REASONS } from "../constants/reportReasons";
+
+
+
 
 export default function ChatRoom() {
   const { pairId } = useParams();
@@ -40,6 +51,10 @@ export default function ChatRoom() {
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const videoCameraRef = useRef(null);
+  const [reportOpen, setReportOpen] = useState(false);
+const [reportReason, setReportReason] = useState("");
+const [reportText, setReportText] = useState("");
+
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, async (u) => {
@@ -102,6 +117,30 @@ export default function ChatRoom() {
     });
     setNewMessage("");
   };
+  const submitReport = async () => {
+  if (!reportReason || !user) return;
+
+  const ids = pairId.split("_");
+  const reportedUserId = ids.find((id) => id !== user.uid);
+
+  await addDoc(collection(db, "reports"), {
+    reporterId: user.uid,
+    reporterEmail: userEmail,
+    reporterRole: "unknown", // resolved by admin if needed
+    reportedUserId,
+    reason: reportReason,
+    description: reportText,
+    pairId,
+    status: "pending",
+    createdAt: serverTimestamp(),
+  });
+
+  alert("✅ Report submitted. SuperBird will review it.");
+  setReportOpen(false);
+  setReportReason("");
+  setReportText("");
+};
+
 
   const compressImage = (file, maxWidth = 800, maxHeight = 800, quality = 0.6) =>
     new Promise((resolve) => {
@@ -306,12 +345,65 @@ export default function ChatRoom() {
           <IconButton size="small" onClick={() => videoCameraRef.current.click()}>
             <Videocam fontSize="small" />
           </IconButton>
+          <IconButton color="error" onClick={() => setReportOpen(true)}>
+            <ReportIcon />
+          </IconButton>
+
 
           <Button variant="contained" sx={{ minWidth: "50px", py: 0.7 }} onClick={sendMessage}>
             <Send fontSize="small" />
           </Button>
         </Box>
       </Paper>
+      {/* 🚨 REPORT DIALOG */}
+<Dialog open={reportOpen} onClose={() => setReportOpen(false)} fullWidth>
+  <DialogTitle>Report User</DialogTitle>
+
+  <DialogContent>
+    <Typography variant="body2" sx={{ mb: 1 }}>
+      Please select a reason for reporting:
+    </Typography>
+
+    <TextField
+      select
+      fullWidth
+      label="Reason"
+      value={reportReason}
+      onChange={(e) => setReportReason(e.target.value)}
+      SelectProps={{ native: true }}
+      sx={{ mb: 2 }}
+    >
+      <option value=""></option>
+      {REPORT_REASONS.map((reason) => (
+        <option key={reason} value={reason}>
+          {reason}
+        </option>
+      ))}
+    </TextField>
+
+    <TextField
+      fullWidth
+      multiline
+      rows={3}
+      label="Additional details (optional)"
+      value={reportText}
+      onChange={(e) => setReportText(e.target.value)}
+    />
+  </DialogContent>
+
+  <DialogActions>
+    <Button onClick={() => setReportOpen(false)}>Cancel</Button>
+    <Button
+      variant="contained"
+      color="error"
+      disabled={!reportReason}
+      onClick={submitReport}
+    >
+      Submit Report
+    </Button>
+  </DialogActions>
+</Dialog>
+
     </Box>
   );
 }

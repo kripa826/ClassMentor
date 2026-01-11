@@ -127,6 +127,8 @@ const QUICK_TABS = [
   { id: "birds", label: "Birds" },
   { id: "buddies", label: "Buddies" },
   { id: "pairs", label: "Pairs" },
+  { id: "reports", label: "Reports" }
+
 ];
 
 /* ---------- GlassCard component (frosted + vibrant tint) ---------- */
@@ -227,9 +229,7 @@ export default function AdminDashboard() {
     };
   }, [activeIndex, tabCount]);
 
-  const [newBird, setNewBird] = useState("");
-  const [newBuddy, setNewBuddy] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
+
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedPair, setSelectedPair] = useState(null);
   const [editBird, setEditBird] = useState("");
@@ -239,6 +239,7 @@ export default function AdminDashboard() {
   const [selectedBirdId, setSelectedBirdId] = useState(null);
   const [actionsDialogOpen, setActionsDialogOpen] = useState(false);
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
+const [reports, setReports] = useState([]);
 
   // UI extras
   const [q, setQ] = useState("");
@@ -267,6 +268,12 @@ export default function AdminDashboard() {
         id: docSnap.id,
         ...docSnap.data(),
       }));
+
+      const reportsSnap = await getDocs(collection(db, "reports"));
+setReports(
+  reportsSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+);
+
 
       const birdUsers = allUsers.filter((u) => u.role === "bird");
       const buddyUsers = allUsers.filter((u) => u.role === "buddy");
@@ -313,27 +320,7 @@ export default function AdminDashboard() {
 const getBuddyEmail = (buddyId) =>
   buddies.find((b) => b.id === buddyId)?.email || "Unknown Buddy";
 
-  // CREATE
-  const handleCreatePair = async () => {
-    if (!newBird || !newBuddy) return alert("Please select both Bird and Buddy!");
-
-    const existingPairsQuery = query(
-      collection(db, "pairs"),
-      where("buddyId", "==", newBuddy)
-    );
-    const snapshot = await getDocs(existingPairsQuery);
-    if (!snapshot.empty) return alert("❌ This Buddy is already paired!");
-
-    await addDoc(collection(db, "pairs"), {
-      birdId: newBird,
-      buddyId: newBuddy,
-      createdAt: new Date(),
-    });
-    setDialogOpen(false);
-    setNewBird("");
-    setNewBuddy("");
-    fetchData();
-  };
+  
 
   const handleDeletePair = async (pairId) => {
     if (!window.confirm("Delete this pair?")) return;
@@ -958,7 +945,7 @@ const getBuddyEmail = (buddyId) =>
                     <Button
                       variant="contained"
                       startIcon={<AddIcon />}
-                      onClick={() => setDialogOpen(true)}
+                      onClick={() => navigate("/create-pair")}
                       sx={{ ...pill, bgcolor: PALETTE.pastelPurple, color: "white", fontWeight: 800 }}
                     >
                       New Pair
@@ -1030,12 +1017,58 @@ const getBuddyEmail = (buddyId) =>
                 )}
               </Stack>
             )}
+            {activeTab === "reports" && (
+  <Stack spacing={2}>
+    <Typography variant="h5" sx={{ color: PALETTE.textDark }}>
+      🚨 Reports
+    </Typography>
+
+    {reports.length === 0 ? (
+      <Typography>No reports submitted.</Typography>
+    ) : (
+      reports.map((r) => (
+        <GlassCard key={r.id}>
+          <Typography fontWeight={800}>{r.reason}</Typography>
+
+          <Typography variant="caption" display="block">
+            Reporter: {r.reporterEmail}
+          </Typography>
+
+          <Typography variant="caption" display="block">
+            Pair: {r.pairId}
+          </Typography>
+
+          <Chip
+            label={r.status}
+            color={r.status === "pending" ? "warning" : "success"}
+            sx={{ mt: 1 }}
+          />
+
+          <Button
+            size="small"
+            sx={{ mt: 1 }}
+            onClick={async () => {
+              await updateDoc(doc(db, "reports", r.id), {
+                status: "reviewed",
+              });
+              fetchData();
+            }}
+          >
+            Mark Reviewed
+          </Button>
+        </GlassCard>
+      ))
+    )}
+  </Stack>
+)}
           </Box>
         </GlassCard>
       </Box>
+      
 
       {/* Assign Buddy Dialog */}
       {/* Add Buddy Dialog */}
+      
 <Dialog
   open={assignDialogOpen}
   onClose={handleCloseAssignDialog}
@@ -1523,185 +1556,7 @@ const getBuddyEmail = (buddyId) =>
 
 
 
-      {/* Create Pair Dialog */}
-      {/* Create Pair Dialog – GLASS UI */}
-<Dialog
-  open={dialogOpen}
-  onClose={() => setDialogOpen(false)}
-  fullWidth
-  maxWidth="sm"
-  PaperProps={{
-    sx: {
-      borderRadius: 4,
-      background: "rgba(255,255,255,0.06)",
-      backdropFilter: "blur(16px) saturate(160%)",
-      border: "1px solid rgba(255,255,255,0.12)",
-      boxShadow: "0 30px 70px rgba(0,0,0,0.55)",
-      color: PALETTE.textDark,
-    },
-  }}
->
-  {/* ===== Header ===== */}
-  <DialogTitle
-    sx={{
-      fontWeight: 900,
-      fontSize: 18,
-      letterSpacing: 0.5,
-      color: PALETTE.softYellow,
-      display: "flex",
-      alignItems: "center",
-      gap: 1,
-      borderBottom: "1px solid rgba(255,255,255,0.08)",
-    }}
-  >
-    Create New Pair
-  </DialogTitle>
 
-  {/* ===== Content ===== */}
-  <DialogContent
-    dividers
-    sx={{
-      px: 3,
-      py: 3,
-      borderColor: "rgba(255,255,255,0.06)",
-    }}
-  >
-    <Stack spacing={3}>
-      {/* Bird Select */}
-      <Box
-        sx={{
-          background: "rgba(255,255,255,0.05)",
-          backdropFilter: "blur(14px) saturate(160%)",
-          border: "1px solid rgba(255,255,255,0.12)",
-          borderRadius: 2,
-          p: 2,
-        }}
-      >
-        <Typography
-          sx={{
-            fontWeight: 900,
-            fontSize: 13,
-            color: PALETTE.softYellow,
-            textTransform: "uppercase",
-            letterSpacing: 1,
-            mb: 1,
-          }}
-        >
-          Select Bird
-        </Typography>
-
-        <FormControl fullWidth>
-          <Select
-            value={newBird}
-            onChange={(e) => setNewBird(e.target.value)}
-            displayEmpty
-            sx={{
-              bgcolor: "rgba(255,255,255,0.04)",
-              borderRadius: 2,
-              color: PALETTE.textDark,
-            }}
-          >
-            <MenuItem value="" disabled>
-              Choose a bird
-            </MenuItem>
-            {birds.map((b) => (
-              <MenuItem key={b.id} value={b.id}>
-                {b.email}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      </Box>
-
-      {/* Buddy Select */}
-      <Box
-        sx={{
-          background: "rgba(255,255,255,0.05)",
-          backdropFilter: "blur(14px) saturate(160%)",
-          border: "1px solid rgba(255,255,255,0.12)",
-          borderRadius: 2,
-          p: 2,
-        }}
-      >
-        <Typography
-          sx={{
-            fontWeight: 900,
-            fontSize: 13,
-            color: PALETTE.softYellow,
-            textTransform: "uppercase",
-            letterSpacing: 1,
-            mb: 1,
-          }}
-        >
-          Select Buddy
-        </Typography>
-
-        <FormControl fullWidth>
-          <Select
-            value={newBuddy}
-            onChange={(e) => setNewBuddy(e.target.value)}
-            displayEmpty
-            sx={{
-              bgcolor: "rgba(255,255,255,0.04)",
-              borderRadius: 2,
-              color: PALETTE.textDark,
-            }}
-          >
-            <MenuItem value="" disabled>
-              Choose a buddy
-            </MenuItem>
-            {buddies.map((b) => (
-              <MenuItem key={b.id} value={b.id}>
-                {b.email}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      </Box>
-    </Stack>
-  </DialogContent>
-
-  {/* ===== Footer ===== */}
-  <DialogActions
-    sx={{
-      px: 3,
-      pb: 2,
-      pt: 1,
-      justifyContent: "flex-end",
-    }}
-  >
-    <Button
-      onClick={() => setDialogOpen(false)}
-      sx={{
-        color: PALETTE.softYellow,
-        fontWeight: 700,
-        textTransform: "none",
-      }}
-    >
-      Cancel
-    </Button>
-
-    <motion.div whileTap={buttonTap}>
-      <Button
-        onClick={handleCreatePair}
-        sx={{
-          ml: 1,
-          bgcolor: "rgba(155,140,255,0.15)",
-          color: PALETTE.softYellow,
-          fontWeight: 800,
-          textTransform: "none",
-          borderRadius: 2,
-          border: "1px solid rgba(155,140,255,0.35)",
-          "&:hover": {
-            bgcolor: "rgba(155,140,255,0.25)",
-          },
-        }}
-      >
-        Create Pair
-      </Button>
-    </motion.div>
-  </DialogActions>
-</Dialog>
 
 
       {/* Edit Pair Dialog */}

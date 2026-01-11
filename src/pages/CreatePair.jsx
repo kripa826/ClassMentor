@@ -1,88 +1,84 @@
-// src/pages/CreatePair.jsx
-import React, { useState } from "react";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import React, { useState, useEffect } from "react";
+import { collection, getDocs, addDoc, query, where, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebaseConfig";
-import { Box, TextField, Button, Typography, Paper } from "@mui/material";
+import { Box, Paper, Typography, Button, MenuItem, Select, FormControl } from "@mui/material";
 
 export default function CreatePair() {
+  const [birds, setBirds] = useState([]);
+  const [buddies, setBuddies] = useState([]);
   const [birdId, setBirdId] = useState("");
   const [buddyId, setBuddyId] = useState("");
-  const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const loadUsers = async () => {
+    const usersSnap = await getDocs(collection(db, "users"));
+    const users = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    setBirds(users.filter(u => u.role === "bird"));
+    setBuddies(users.filter(u => u.role === "buddy"));
+  };
+
   const handleCreatePair = async () => {
-    if (!birdId || !buddyId) {
-      setMessage("Please enter both Bird and Buddy IDs");
-      return;
-    }
+    if (!birdId || !buddyId) return setMessage("❌ Please select both Bird & Buddy");
 
-    setLoading(true);
-    setMessage("");
+    // Prevent duplicate assignment
+    const existing = await getDocs(
+      query(collection(db, "pairs"), where("buddyId", "==", buddyId))
+    );
+    if (!existing.empty) return setMessage("⚠ This buddy is already paired");
 
-    try {
-      await addDoc(collection(db, "pairs"), {
-        birdId,
-        buddyId,
-        createdAt: serverTimestamp(),
-      });
+    // Create pair
+    const pairRef = await addDoc(collection(db, "pairs"), {
+      birdId,
+      buddyId,
+      createdAt: serverTimestamp()
+    });
 
-      setMessage("✅ Pair created successfully!");
-      setBirdId("");
-      setBuddyId("");
-    } catch (err) {
-      setMessage("❌ Error: " + err.message);
-    } finally {
-      setLoading(false);
-    }
+    // Create notification 🎯
+    await addDoc(collection(db, "notifications"), {
+      userId: buddyId,
+      title: "New Mentor Assigned",
+      message: `You have been assigned to Bird ID: ${birdId}`,
+      pairId: pairRef.id,
+      seen: false,
+      createdAt: serverTimestamp()
+    });
+
+    setMessage("✅ Pair created & notification sent 🎉");
+    setBirdId("");
+    setBuddyId("");
   };
 
   return (
-    <Box
-      sx={{
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        height: "100vh",
-        background: "linear-gradient(135deg, #f6d365 0%, #fda085 100%)",
-      }}
-    >
-      <Paper sx={{ p: 4, width: 400, textAlign: "center", borderRadius: 3 }}>
+    <Box sx={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#0b1220" }}>
+      <Paper sx={{ p: 4, width: 420, borderRadius: 3, textAlign: "center" }}>
         <Typography variant="h5" gutterBottom>
-          Create Bird–Buddy Pair
+          Create New Pair
         </Typography>
 
-        <TextField
-          label="Bird UID"
-          fullWidth
-          margin="normal"
-          value={birdId}
-          onChange={(e) => setBirdId(e.target.value)}
-        />
+        <FormControl fullWidth sx={{ mt: 2 }}>
+          <Select value={birdId} onChange={e => setBirdId(e.target.value)} displayEmpty>
+            <MenuItem value="" disabled>Select Bird</MenuItem>
+            {birds.map(b => <MenuItem key={b.id} value={b.id}>{b.email}</MenuItem>)}
+          </Select>
+        </FormControl>
 
-        <TextField
-          label="Buddy UID"
-          fullWidth
-          margin="normal"
-          value={buddyId}
-          onChange={(e) => setBuddyId(e.target.value)}
-        />
+        <FormControl fullWidth sx={{ mt: 2 }}>
+          <Select value={buddyId} onChange={e => setBuddyId(e.target.value)} displayEmpty>
+            <MenuItem value="" disabled>Select Buddy</MenuItem>
+            {buddies.map(b => <MenuItem key={b.id} value={b.id}>{b.email}</MenuItem>)}
+          </Select>
+        </FormControl>
 
-        <Button
-          variant="contained"
-          color="primary"
-          fullWidth
-          sx={{ mt: 2 }}
-          onClick={handleCreatePair}
-          disabled={loading}
-        >
-          {loading ? "Creating..." : "Create Pair"}
+        <Button sx={{ mt: 3 }} variant="contained" onClick={handleCreatePair}>
+          Create Pair
         </Button>
 
-        {message && (
-          <Typography sx={{ mt: 2 }} color="textSecondary">
-            {message}
-          </Typography>
-        )}
+        {message && <Typography sx={{ mt: 2 }}>{message}</Typography>}
       </Paper>
     </Box>
   );
