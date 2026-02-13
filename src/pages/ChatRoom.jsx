@@ -11,6 +11,8 @@ import {
   doc,
 } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
+import { sendNotification } from "../utils/sendNotification";
+
 import { onAuthStateChanged } from "firebase/auth";
 import {
   Box,
@@ -116,6 +118,18 @@ const [reportText, setReportText] = useState("");
       timestamp: serverTimestamp(),
     });
     setNewMessage("");
+    const ids = pairId.split("_");
+const receiverId = ids.find((id) => id !== user.uid);
+
+await sendNotification(
+  receiverId,
+  auth.currentUser.uid,
+  userEmail.split("@")[0],
+  "sent you a message",
+  "chat"
+);
+
+
   };
   const submitReport = async () => {
   if (!reportReason || !user) return;
@@ -139,6 +153,14 @@ const [reportText, setReportText] = useState("");
   setReportOpen(false);
   setReportReason("");
   setReportText("");
+  await sendNotification(
+  "superbird21@gmail.com",
+   auth.currentUser.uid,
+  userEmail.split("@")[0],
+  "submitted a report",
+  "report"
+);
+
 };
 
 
@@ -174,45 +196,61 @@ const [reportText, setReportText] = useState("");
     });
 
   const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    if (!user) return alert("⚠️ Please log in first.");
+  const file = event.target.files[0];
+  if (!file) return;
+  if (!user) return alert("⚠️ Please log in first.");
 
-    const fileType = file.type.split("/")[0];
+  const fileType = file.type.split("/")[0];
 
-    try {
-      if (fileType === "image") {
-        const base64 = await compressImage(file);
+  try {
+    if (fileType === "image") {
+      const base64 = await compressImage(file);
+
+      await addDoc(collection(db, "chats", pairId, "messages"), {
+        senderId: user.uid,
+        senderEmail: userEmail || user.email,
+        image: base64,
+        type: "image",
+        timestamp: serverTimestamp(),
+      });
+
+    } else if (fileType === "video") {
+      if (file.size > 900000) {
+        alert("⚠️ Video is too large! Keep it under 1MB.");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = async () => {
         await addDoc(collection(db, "chats", pairId, "messages"), {
           senderId: user.uid,
           senderEmail: userEmail || user.email,
-          image: base64,
-          type: "image",
+          video: reader.result,
+          type: "video",
           timestamp: serverTimestamp(),
         });
-      } else if (fileType === "video") {
-        if (file.size > 900000) {
-          alert("⚠️ Video is too large! Keep it under 1MB.");
-          return;
-        }
-        const reader = new FileReader();
-        reader.onloadend = async () => {
-          await addDoc(collection(db, "chats", pairId, "messages"), {
-            senderId: user.uid,
-            senderEmail: userEmail || user.email,
-            video: reader.result,
-            type: "video",
-            timestamp: serverTimestamp(),
-          });
-        };
-        reader.readAsDataURL(file);
-      } else {
-        alert("⚠️ Only image and video files are supported.");
-      }
-    } catch (error) {
-      console.error("Upload error:", error);
+      };
+      reader.readAsDataURL(file);
+
+    } else {
+      // ✅ NEW FILE SUPPORT
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        await addDoc(collection(db, "chats", pairId, "messages"), {
+          senderId: user.uid,
+          senderEmail: userEmail || user.email,
+          file: reader.result,
+          fileName: file.name,
+          type: "file",
+          timestamp: serverTimestamp(),
+        });
+      };
+      reader.readAsDataURL(file);
     }
-  };
+  } catch (error) {
+    console.error("Upload error:", error);
+  }
+};
 
   const formatTime = (ts) => {
     if (!ts) return "";
@@ -276,12 +314,27 @@ const [reportText, setReportText] = useState("");
                   boxShadow: msg.senderId === user?.uid ? "0 2px 8px rgba(30,64,175,0.12)" : "none",
                 }}
               >
-                {msg.type === "image" ? (
-                  <img src={msg.image} alt="sent" style={{ maxWidth: "100%", borderRadius: 8 }} />
-                ) : msg.type === "video" ? (
-                  <video src={msg.video} controls style={{ maxWidth: "100%", borderRadius: 8 }} />
-                ) : (
-                  <Typography sx={{ fontSize: 14, whiteSpace: "pre-wrap" }}>{msg.text}</Typography>
+               {msg.type === "image" ? (
+  <img src={msg.image} style={{ maxWidth: "100%", borderRadius: 8 }} />
+
+) : msg.type === "video" ? (
+  <video src={msg.video} controls style={{ maxWidth: "100%", borderRadius: 8 }} />
+
+) : msg.type === "file" ? (
+  <a
+    href={msg.file}
+    target="_blank"
+    rel="noopener noreferrer"
+    style={{ color: "#1976d2", fontWeight: "bold" }}
+  >
+    📎 {msg.fileName}
+  </a>
+
+) : (
+  <Typography sx={{ fontSize: 14, whiteSpace: "pre-wrap" }}>
+    {msg.text}
+  </Typography>
+
                 )}
               </Paper>
 
@@ -313,7 +366,7 @@ const [reportText, setReportText] = useState("");
 
           <input
             type="file"
-            accept="image/*,video/*"
+            accept="*"
             ref={fileInputRef}
             style={{ display: "none" }}
             onChange={handleFileUpload}

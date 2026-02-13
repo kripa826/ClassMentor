@@ -8,8 +8,14 @@ import {
   updateDoc,
   query,
   where,
+  onSnapshot
 } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
+import { sendNotification } from "../utils/sendNotification";
+import LogoutIcon from "@mui/icons-material/Logout";
+
+
+
 import { signOut } from "firebase/auth";
 import {
   Box,
@@ -104,6 +110,7 @@ const GLASS_GRADIENTS = {
   },
 };
 
+
 const glassBox = {
   background: "rgba(255,255,255,0.05)",
   backdropFilter: "blur(14px) saturate(160%)",
@@ -127,7 +134,8 @@ const QUICK_TABS = [
   { id: "birds", label: "Birds" },
   { id: "buddies", label: "Buddies" },
   { id: "pairs", label: "Pairs" },
-  { id: "reports", label: "Reports" }
+  { id: "reports", label: "Reports" },
+  { id: "requests", label: "Requests" },
 
 ];
 
@@ -183,6 +191,9 @@ export default function AdminDashboard() {
   const [pairs, setPairs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("birds");
+  const [notifications, setNotifications] = useState([]);
+const [notifOpen, setNotifOpen] = useState(false);
+
 
   // helper for quick actions tabs to compute slider position
   const activeIndex = QUICK_TABS.findIndex((t) => t.id === activeTab);
@@ -239,6 +250,8 @@ export default function AdminDashboard() {
   const [selectedBirdId, setSelectedBirdId] = useState(null);
   const [actionsDialogOpen, setActionsDialogOpen] = useState(false);
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
+  const [pairRequests, setPairRequests] = useState([]);
+
 const [reports, setReports] = useState([]);
 
   // UI extras
@@ -255,6 +268,28 @@ const [reports, setReports] = useState([]);
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // 🔔 Notifications listener
+useEffect(() => {
+  if (!auth.currentUser) return;
+
+  const q = query(
+    collection(db, "notifications"),
+    where("toUserId", "==", auth.currentUser.uid)
+  );
+
+  const unsub = onSnapshot(q, (snap) => {
+    setNotifications(
+  snap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }))
+);
+
+  });
+
+  return () => unsub();
+}, []);
+
 
   const fetchData = async () => {
     setLoading(true);
@@ -268,6 +303,8 @@ const [reports, setReports] = useState([]);
         id: docSnap.id,
         ...docSnap.data(),
       }));
+const requestsSnap = await getDocs(collection(db, "pairRequests"));
+setPairRequests(requestsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
       const reportsSnap = await getDocs(collection(db, "reports"));
 setReports(
@@ -390,6 +427,25 @@ const getBuddyEmail = (buddyId) =>
       buddyId,
       createdAt: new Date(),
     });
+    
+   await sendNotification(
+  selectedBird.id,
+  auth.currentUser.uid,
+  "SuperBird",
+  "pair",
+  "A new buddy has been assigned to you"
+);
+
+await sendNotification(
+  buddyId,
+  auth.currentUser.uid,
+  "SuperBird",
+  "You have been assigned a new bird mentor",
+  "pair"
+);
+
+
+
     await fetchData();
     setAssignDialogOpen(false);
   };
@@ -404,6 +460,23 @@ const getBuddyEmail = (buddyId) =>
     if (snap.empty) return alert("Pair document not found.");
     await deleteDoc(doc(db, "pairs", snap.docs[0].id));
     await fetchData();
+   await sendNotification(
+  birdId,
+  auth.currentUser.uid,
+  "SuperBird",
+  "pair",
+  "A buddy was removed from your pair"
+);
+
+await sendNotification(
+  buddyId,
+  auth.currentUser.uid,
+  "SuperBird",
+  "pair",
+  "You were removed from your bird mentor"
+);
+
+
   };
 
   // Filter lists by search q
@@ -520,21 +593,35 @@ const getBuddyEmail = (buddyId) =>
               }}
             />
 
-            <Tooltip title="Logout">
-              <motion.div whileTap={buttonTap}>
-                <IconButton
-                  color="primary"
-                  onClick={handleLogout}
-                  sx={{
-                    bgcolor: "rgba(255,255,255,0.06)",
-                    borderRadius: 2,
-                    border: "1px solid rgba(255,255,255,0.04)",
-                  }}
-                >
-                  <Logout sx={{ color: "rgba(255,255,255,0.9)" }} />
-                </IconButton>
-              </motion.div>
-            </Tooltip>
+            <Stack direction="row" spacing={1} alignItems="center">
+
+  {/* 🔔 Notification Button */}
+ <Button
+  onClick={async () => {
+    setNotifOpen(true);
+
+    // mark all unread as read
+    const unread = notifications.filter(n => !n.read);
+
+    for (let n of unread) {
+      await updateDoc(doc(db, "notifications", n.id), {
+        read: true
+      });
+    }
+  }}
+>
+  🔔 {notifications.filter(n => !n.read).length}
+</Button>
+
+  {/* Logout */}
+  <Tooltip title="Logout">
+    <IconButton onClick={handleLogout}>
+      <LogoutIcon sx={{ color: PALETTE.text }} />
+    </IconButton>
+  </Tooltip>
+
+</Stack>
+
           </Stack>
         </Toolbar>
       </AppBar>
@@ -647,19 +734,19 @@ const getBuddyEmail = (buddyId) =>
           {/* Quick Actions (yellow poster look with sliding pill) */}
           <motion.div variants={statCardVariant} initial="hidden" animate="show" style={{ flex: 1 }}>
             <GlassCard
-              sx={{
-                backgroundImage: GLASS_GRADIENTS.yellow.background,
-                backgroundBlendMode: "normal, soft-light, overlay",
-                color: GLASS_GRADIENTS.yellow.text,
-                borderRadius: 12,
-                border: GLASS_GRADIENTS.yellow.border,
-                p: 2,
-                boxShadow: "0 10px 32px rgba(80,50,0,0.12), inset 0 -6px 18px rgba(255,255,255,0.03)",
-                backdropFilter: "blur(8px) saturate(110%)",
-                width: "100%",
-                maxWidth: 380,
-                minHeight: 120,
-              }}
+            sx={{
+    backgroundImage: GLASS_GRADIENTS.yellow.background,
+    backgroundBlendMode: "normal, soft-light, overlay",
+    color: GLASS_GRADIENTS.yellow.text,
+    borderRadius: 12,
+    border: GLASS_GRADIENTS.yellow.border,
+    p: 2,
+    boxShadow: "0 10px 32px rgba(80,50,0,0.12), inset 0 -6px 18px rgba(255,255,255,0.03)",
+    backdropFilter: "blur(8px) saturate(110%)",
+    width: "100%",
+    maxWidth: 380,
+    minHeight: 120,
+  }}
             >
               <Typography variant="subtitle2" color="rgba(255,255,255,0.9)" sx={{ mb: 1 }}>
                 Quick Actions
@@ -686,42 +773,43 @@ const getBuddyEmail = (buddyId) =>
                     width: "100%",
                     height: "100%",
                     alignItems: "center",
-                    gap: 0,
+                    gap: 0.5,
                     position: "relative",
                     zIndex: 1,
                   }}
                 >
                   {QUICK_TABS.map((item) => {
-                    const isActive = activeTab === item.id;
-                    return (
-                      <Button
-                        key={item.id}
-                        role="tab"
-                        aria-selected={isActive}
-                        onClick={() => setActiveTab(item.id)}
-                        sx={{
-                          flex: 1,
-                          minWidth: 80,
-                          px: 2,
-                          py: 0.6,
-                          borderRadius: 999,
-                          textTransform: "none",
-                          fontWeight: 800,
-                          color: isActive ? GLASS_GRADIENTS.yellow.text : "#ffffff",
-                          bgcolor: "transparent",
-                          "&:focus": { boxShadow: `0 0 0 4px ${GLASS_GRADIENTS.yellow.text}22` },
-                          transform: isActive ? "scale(1.02)" : "none",
-                          transition: "color 180ms ease, transform 180ms ease",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                        id={`qa-pill-${item.id}`}
-                      >
-                        {item.label}
-                      </Button>
-                    );
-                  })}
+  const isActive = activeTab === item.id; // ✅ MUST BE HERE
+
+  return (
+    <Button
+      key={item.id}
+      role="tab"
+      aria-selected={isActive}
+      onClick={() => setActiveTab(item.id)}
+      sx={{
+        flex: 1,
+        minWidth: 0,
+        px: 1.2,
+        py: 0.6,
+        borderRadius: 999,
+        textTransform: "none",
+        fontWeight: 800,
+        fontSize: 13,
+        
+        bgcolor: "transparent",
+        transform: isActive ? "scale(1.02)" : "none",
+        transition: "all 0.18s ease",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      }}
+      id={`qa-pill-${item.id}`}
+    >
+      {item.label}
+    </Button>
+  );
+})}
                 </Box>
 
                 {/* measured sliding indicator (absolute) */}
@@ -1061,6 +1149,84 @@ const getBuddyEmail = (buddyId) =>
     )}
   </Stack>
 )}
+{activeTab === "requests" && (
+  <Stack spacing={2}>
+    <Typography variant="h5" sx={{ color: PALETTE.textDark }}>
+      🔔 Pair Requests
+    </Typography>
+
+    {pairRequests.length === 0 ? (
+      <Typography>No requests yet.</Typography>
+    ) : (
+      pairRequests.map((req) => (
+        <GlassCard key={req.id}>
+          <Typography fontWeight={800}>
+            {req.requesterEmail}
+          </Typography>
+
+          <Typography variant="caption" display="block">
+            Reason: {req.reason}
+          </Typography>
+
+          <Typography variant="caption" display="block">
+           Role: {req.requesterRole}
+          </Typography>
+
+          <Stack direction="row" spacing={1} mt={1}>
+            <Button
+  size="small"
+  variant="contained"
+  onClick={async () => {
+  console.log("REQ:", req);
+
+  let birdId, buddyId;
+
+  if (req.requesterRole === "buddy") {
+    birdId = req.requestedForId;
+    buddyId = req.requesterId;
+  } else if (req.requesterRole === "bird") {
+    birdId = req.requesterId;
+    buddyId = req.buddyId; // ✅ FIX HERE
+  }
+
+  if (!birdId || !buddyId) {
+    alert("❌ Missing user IDs");
+    return;
+  }
+
+  console.log("FINAL:", { birdId, buddyId });
+
+  await addDoc(collection(db, "pairs"), {
+    birdId,
+    buddyId,
+    createdAt: new Date(),
+  });
+
+  await deleteDoc(doc(db, "pairRequests", req.id));
+  fetchData();
+}}
+  sx={{ bgcolor: PALETTE.mintTeal, fontWeight: 800 }}
+>
+  Approve
+</Button>
+
+            <Button
+              size="small"
+              color="error"
+              onClick={async () => {
+                await deleteDoc(doc(db, "pairRequests", req.id));
+                fetchData();
+              }}
+            >
+              Reject
+            </Button>
+          </Stack>
+        </GlassCard>
+      ))
+    )}
+  </Stack>
+)}
+
           </Box>
         </GlassCard>
       </Box>
@@ -1728,6 +1894,35 @@ const getBuddyEmail = (buddyId) =>
         Save Changes
       </Button>
     </motion.div>
+  </DialogActions>
+</Dialog>
+<Dialog open={notifOpen} onClose={() => setNotifOpen(false)} fullWidth maxWidth="sm">
+  <DialogTitle>Notifications</DialogTitle>
+
+  <DialogContent>
+    {notifications.length === 0 ? (
+      <Typography>No notifications</Typography>
+    ) : (
+      notifications.map((n) => (
+        <Box key={n.id} sx={{ mb: 2 }}>
+          <Typography fontWeight={700}>
+            {n.fromName}
+          </Typography>
+
+          <Typography variant="body2">
+            {n.type === "chat" && "sent you a message"}
+            {n.type === "pair" && "Pair update"}
+            {n.type === "report" && "Submitted a report"}
+          </Typography>
+
+          <Divider sx={{ mt: 1 }} />
+        </Box>
+      ))
+    )}
+  </DialogContent>
+
+  <DialogActions>
+    <Button onClick={() => setNotifOpen(false)}>Close</Button>
   </DialogActions>
 </Dialog>
 

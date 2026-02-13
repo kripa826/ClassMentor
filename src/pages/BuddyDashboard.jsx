@@ -1,12 +1,21 @@
 import React, { useEffect, useState } from "react";
 import { auth, db } from "../firebaseConfig";
+import { Dialog, DialogTitle, DialogContent, DialogActions } from "@mui/material";
+import { BUDDY_REQUEST_REASONS } from "../constants/pairRequestReasons";
+import { addDoc, serverTimestamp } from "firebase/firestore";
+import { orderBy } from "firebase/firestore";
+
+
 import {
   collection,
   query,
   where,
   getDocs,
+  updateDoc,
   doc,
   getDoc,
+  onSnapshot
+
 } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import {
@@ -61,9 +70,34 @@ export default function BuddyDashboard() {
   const [pairs, setPairs] = useState([]);
   const [birdMap, setBirdMap] = useState({});
   const [loading, setLoading] = useState(true);
+  const [progressMap, setProgressMap] = useState({});
+  const [requestOpen, setRequestOpen] = useState(false);
+const [requestReason, setRequestReason] = useState("");
+const [selectedBirdId, setSelectedBirdId] = useState(null);
+const [notifications, setNotifications] = useState([]);
+
+const [notifOpen, setNotifOpen] = useState(false);
+
   const navigate = useNavigate();
 
   /* ---------- AUTH + DATA ---------- */
+  const submitPairRequest = async () => {
+  if (!selectedBirdId || !requestReason) return;
+
+  await addDoc(collection(db, "pairRequests"), {
+    requesterId: user.uid,
+    requesterRole: "buddy",
+    currentPairId: pairs[0]?.id || null,
+    requestedForId: selectedBirdId,
+    reason: requestReason,
+    status: "pending",
+    createdAt: new Date(),
+  });
+
+  setRequestOpen(false);
+  setRequestReason("");
+};
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) return navigate("/login");
@@ -71,10 +105,11 @@ export default function BuddyDashboard() {
       setUser(currentUser);
 
       // fetch pairs where buddy = user
-      const q = query(
-        collection(db, "pairs"),
-        where("buddyId", "==", currentUser.uid)
-      );
+     const q = query(
+  collection(db, "pairs"),
+  where("buddyId", "==", currentUser.uid)
+);
+     
       const snap = await getDocs(q);
       const pairData = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setPairs(pairData);
@@ -83,12 +118,20 @@ export default function BuddyDashboard() {
       const birdIds = [...new Set(pairData.map((p) => p.birdId))];
       const details = {};
 
-      await Promise.all(
-        birdIds.map(async (birdId) => {
-          const s = await getDoc(doc(db, "users", birdId));
-          if (s.exists()) details[birdId] = s.data();
-        })
-      );
+     await Promise.all(
+  pairData.map(async (pair) => {
+    // bird details
+    const birdSnap = await getDoc(doc(db, "users", pair.birdId));
+    if (birdSnap.exists()) details[pair.birdId] = birdSnap.data();
+
+    // buddy progress (SELF progress)
+    const buddySnap = await getDoc(doc(db, "users", currentUser.uid));
+    if (buddySnap.exists() && buddySnap.data().progress) {
+      setProgressMap(buddySnap.data().progress);
+    }
+  })
+);
+
 
       setBirdMap(details);
       setLoading(false);
@@ -96,6 +139,31 @@ export default function BuddyDashboard() {
 
     return () => unsub();
   }, [navigate]);
+  // 🔔 Notifications listener
+useEffect(() => {
+  if (!auth.currentUser) return;
+
+ const q = query(
+  collection(db, "notifications"),
+  where("toUserId", "==", auth.currentUser.uid),
+  orderBy("createdAt", "desc")
+);
+
+
+
+  const unsub = onSnapshot(q, (snap) => {
+    setNotifications(
+  snap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }))
+);
+
+  });
+
+  return () => unsub();
+}, []);
+
 
   /* ---------- ACTIONS ---------- */
   const goToChat = (birdId) => {
@@ -160,11 +228,36 @@ export default function BuddyDashboard() {
   </Stack>
 
   {/* Logout button */}
+  <Stack direction="row" spacing={1} alignItems="center">
+
+  {/* 🔔 Notification Button */}
+  <Button
+  onClick={async () => {
+    setNotifOpen(true);
+
+    // mark all unread as read
+    const unread = notifications.filter(n => !n.read);
+
+    for (let n of unread) {
+      await updateDoc(doc(db, "notifications", n.id), {
+        read: true
+      });
+    }
+  }}
+>
+  🔔 {notifications.filter(n => !n.read).length}
+</Button>
+
+
+  {/* Logout */}
   <Tooltip title="Logout">
     <IconButton onClick={handleLogout}>
       <LogoutIcon sx={{ color: PALETTE.text }} />
     </IconButton>
   </Tooltip>
+
+</Stack>
+
 </Toolbar>
 
       </AppBar>
@@ -209,27 +302,201 @@ export default function BuddyDashboard() {
                     🦅 {birdMap[pair.birdId]?.email || "Unknown Bird"}
                   </Typography>
 
-                  <Button
-                    variant="contained"
-                    startIcon={<ChatIcon />}
-                    onClick={() => goToChat(pair.birdId)}
-                    sx={{
-                      bgcolor: "#9B8CFF",
-                      color: "white",
-                      fontWeight: 800,
-                      borderRadius: 2,
-                      textTransform: "none",
-                      "&:hover": { bgcolor: "#8577ff" },
-                    }}
-                  >
-                    Open Chat
-                  </Button>
+                 <Stack
+  direction="row"
+  spacing={2}
+  alignItems="center"
+>
+  <Button
+    variant="contained"
+    startIcon={<ChatIcon />}
+    onClick={() => goToChat(pair.birdId)}
+    sx={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      background: "rgba(94,209,198,0.15)", // SAME AS YOUR BUDDY CARDS
+    }}
+  >
+    Chat
+  </Button>
+
+  <Button
+    variant="outlined"
+    color="warning"
+    onClick={() => {
+      setRequestOpen(true);
+      setSelectedBirdId(pair.birdId);
+    }}
+  >
+    🔁 Request New Pair
+  </Button>
+</Stack>
+
+                  
                 </GlassCard>
+                
               ))}
             </Stack>
           )}
         </GlassCard>
+        {/* ===== TALK WITH SUPERBIRD ===== */}
+<GlassCard sx={{ mt: 3 }}>
+  <Typography variant="h6" fontWeight={800} mb={2}>
+    Talk with SuperBird 🦅
+  </Typography>
+
+  <Divider sx={{ mb: 2 }} />
+
+  <GlassCard
+    sx={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      background: "rgba(94,209,198,0.15)", // SAME AS YOUR BUDDY CARDS
+    }}
+  >
+    <Typography fontWeight={800}>
+      🦅 superbird21@gmail.com
+    </Typography>
+
+    <Stack direction="row" spacing={1}>
+      <Button
+        onClick={() => {
+          const chatId = [auth.currentUser.uid, "SUPERBIRD_UID"]
+            .sort()
+            .join("_");
+
+          navigate(`/chat/${chatId}`);
+        }}
+        variant="contained"
+        startIcon={<ChatIcon />}
+      >
+        Chat
+      </Button>
+    </Stack>
+  </GlassCard>
+</GlassCard>
+
+        {/* ===== FULL WIDTH PROGRESS SECTION ===== */}
+<GlassCard
+  sx={{
+    mt: 3,
+    background: "rgba(255,255,255,0.08)",
+  }}
+>
+  <Typography variant="h6" fontWeight={800} mb={2}>
+    📚 Your Study Progress
+  </Typography>
+
+  {Object.entries(progressMap).map(([subject, units]) => (
+    <Box key={subject} sx={{ mb: 3 }}>
+      <Typography
+        sx={{
+          fontWeight: 900,
+          fontSize: 13,
+          color: "#F4D58D",
+          textTransform: "uppercase",
+          letterSpacing: 1,
+          mb: 1,
+        }}
+      >
+        {subject}
+      </Typography>
+
+      {Object.entries(units).map(([unit, value]) => (
+        <Box
+          key={unit}
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            background: "rgba(255,255,255,0.05)",
+            p: 1,
+            borderRadius: 1,
+            mb: 1,
+          }}
+        >
+          <Typography fontSize={13}>{unit.toUpperCase()}</Typography>
+          <Typography fontSize={13} fontWeight={800}>
+            {value}%
+          </Typography>
+        </Box>
+      ))}
+    </Box>
+  ))}
+</GlassCard>
+
       </Box>
+      <Dialog open={requestOpen} onClose={() => setRequestOpen(false)}>
+  <DialogTitle>Request New Pair</DialogTitle>
+  <DialogContent>
+    {BUDDY_REQUEST_REASONS.map((r) => (
+      <Button
+        key={r}
+        fullWidth
+        sx={{ mt: 1 }}
+        variant={requestReason === r ? "contained" : "outlined"}
+        onClick={() => setRequestReason(r)}
+      >
+        {r}
+      </Button>
+    ))}
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setRequestOpen(false)}>Cancel</Button>
+    <Button
+      variant="contained"
+      onClick={async () => {
+        await addDoc(collection(db, "pairRequests"), {
+          requesterId: user.uid,
+          requesterEmail: user.email,
+          requesterRole: "buddy",
+        requestedForId: selectedBirdId,
+          reason: requestReason,
+          status: "pending",
+          createdAt: serverTimestamp(),
+        });
+        alert("✅ Request sent to SuperBird");
+        setRequestOpen(false);
+        setRequestReason("");
+      }}
+    >
+      Submit
+    </Button>
+  </DialogActions>
+</Dialog>
+<Dialog open={notifOpen} onClose={() => setNotifOpen(false)} fullWidth maxWidth="sm">
+  <DialogTitle>Notifications</DialogTitle>
+
+  <DialogContent>
+    {notifications.length === 0 ? (
+      <Typography>No notifications</Typography>
+    ) : (
+      notifications.map((n) => (
+        <Box key={n.id} sx={{ mb: 2 }}>
+          <Typography fontWeight={700}>
+            {n.fromName}
+          </Typography>
+
+          <Typography fontWeight={700}>
+  {n.fromName}{" "}
+  {n.type === "chat" && "sent you a message"}
+  {n.type === "pair" && "updated your pairing"}
+  {n.type === "report" && "submitted a report"}
+</Typography>
+
+
+          <Divider sx={{ mt: 1 }} />
+        </Box>
+      ))
+    )}
+  </DialogContent>
+
+  <DialogActions>
+    <Button onClick={() => setNotifOpen(false)}>Close</Button>
+  </DialogActions>
+</Dialog>
+
     </Box>
   );
 }

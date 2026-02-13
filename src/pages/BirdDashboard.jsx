@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { auth, db } from "../firebaseConfig";
+import { BIRD_REQUEST_REASONS } from "../constants/pairRequestReasons";
+
+
+import { addDoc, serverTimestamp } from "firebase/firestore";
+
+
+
+
 import {
   collection,
   query,
@@ -8,6 +16,7 @@ import {
   getDoc,
   updateDoc,
   doc,
+  onSnapshot
 } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import {
@@ -69,10 +78,15 @@ export default function BirdDashboard() {
   const [buddyMap, setBuddyMap] = useState({});
   const [profileName, setProfileName] = useState("");
   const [loading, setLoading] = useState(true);
+const [requestOpen, setRequestOpen] = useState(false);
+const [requestReason, setRequestReason] = useState("");
+const [selectedBuddyId, setSelectedBuddyId] = useState(null);
+const [notifications, setNotifications] = useState([]);
+const [notifOpen, setNotifOpen] = useState(false);
 
   // Progress dialog state
   const [progressOpen, setProgressOpen] = useState(false);
-  const [selectedBuddyId, setSelectedBuddyId] = useState(null);
+ 
   const [progressData, setProgressData] = useState({});
 
   const navigate = useNavigate();
@@ -121,6 +135,28 @@ export default function BirdDashboard() {
 
     return () => unsub();
   }, [navigate]);
+  // 🔔 Notifications listener
+useEffect(() => {
+  if (!auth.currentUser) return;
+
+  const q = query(
+    collection(db, "notifications"),
+    where("toUserId", "==", auth.currentUser.uid)
+  );
+
+  const unsub = onSnapshot(q, (snap) => {
+    setNotifications(
+      snap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+    );
+  });
+
+  return () => unsub();   // ✅ CORRECT PLACE
+}, []);
+
+
 
   /* ---------- ACTIONS ---------- */
   const goToChat = (buddyId) => {
@@ -211,11 +247,36 @@ export default function BirdDashboard() {
             </Box>
           </Stack>
 
-          <Tooltip title="Logout">
-            <IconButton onClick={handleLogout}>
-              <LogoutIcon sx={{ color: PALETTE.text }} />
-            </IconButton>
-          </Tooltip>
+          <Stack direction="row" spacing={1} alignItems="center">
+
+ <Button
+  onClick={async () => {
+    setNotifOpen(true);
+
+    // mark all unread as read
+    const unread = notifications.filter(n => !n.read);
+
+    for (let n of unread) {
+      await updateDoc(doc(db, "notifications", n.id), {
+        read: true
+      });
+    }
+  }}
+>
+  🔔 {notifications.filter(n => !n.read).length}
+</Button>
+
+
+
+  {/* Logout */}
+  <Tooltip title="Logout">
+    <IconButton onClick={handleLogout}>
+      <LogoutIcon sx={{ color: PALETTE.text }} />
+    </IconButton>
+  </Tooltip>
+
+</Stack>
+
         </Toolbar>
       </AppBar>
 
@@ -268,6 +329,18 @@ export default function BirdDashboard() {
                       Chat
                     </Button>
                     <Button
+  variant="outlined"
+  color="warning"
+  sx={{ mt: 1 }}
+  onClick={() => {
+    setRequestOpen(true);
+    setSelectedBuddyId(pair.buddyId);
+  }}
+>
+  🔁 Request New Pair
+</Button>
+
+                    <Button
                       variant="outlined"
                       onClick={() => openProgress(pair.buddyId)}
                       sx={{ color: "white", borderColor: "white" }}
@@ -280,7 +353,49 @@ export default function BirdDashboard() {
             </Stack>
           )}
         </GlassCard>
+        {/* ===== TALK WITH SUPERBIRD ===== */}
+<GlassCard sx={{ mt: 3 }}>
+  <Typography variant="h6" fontWeight={800} mb={2}>
+    Talk with SuperBird 🦅
+  </Typography>
+
+  <Divider sx={{ mb: 2 }} />
+
+  <GlassCard
+    sx={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      background: "rgba(94,209,198,0.15)", // SAME AS YOUR BUDDY CARDS
+    }}
+  >
+    <Typography fontWeight={800}>
+      🦅 superbird21@gmail.com
+    </Typography>
+
+    <Stack direction="row" spacing={1}>
+      <Button
+        onClick={() => {
+          const chatId = [auth.currentUser.uid, "H8E2Phu6BmOOscY9cJdl29YhkT42"]
+            .sort()
+            .join("_");
+
+          navigate(`/chat/${chatId}`);
+        }}
+        variant="contained"
+        startIcon={<ChatIcon />}
+      >
+        Chat
+      </Button>
+    </Stack>
+  </GlassCard>
+</GlassCard>
+
       </Box>
+
+
+
+
 
       {/* PROGRESS DIALOG */}
       <Dialog
@@ -429,7 +544,75 @@ export default function BirdDashboard() {
     </Button>
   </DialogActions>
 </Dialog>
+<Dialog open={requestOpen} onClose={() => setRequestOpen(false)}>
+  <DialogTitle>Request New Pair</DialogTitle>
+  <DialogContent>
+    {BIRD_REQUEST_REASONS.map((r) => (
+      <Button
+        key={r}
+        fullWidth
+        sx={{ mt: 1 }}
+        variant={requestReason === r ? "contained" : "outlined"}
+        onClick={() => setRequestReason(r)}
+      >
+        {r}
+      </Button>
+    ))}
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setRequestOpen(false)}>Cancel</Button>
+    <Button
+      variant="contained"
+      onClick={async () => {
+        await addDoc(collection(db, "pairRequests"), {
+          requesterId: user.uid,
+          requesterEmail: user.email,
+          requesterRole: "bird",
+          buddyId: selectedBuddyId,
+          reason: requestReason,
+          status: "pending",
+          createdAt: serverTimestamp(),
+        });
+        alert("✅ Request sent to SuperBird");
+        setRequestOpen(false);
+        setRequestReason("");
+      }}
+    >
+      Submit
+    </Button>
+  </DialogActions>
+</Dialog>
+<Dialog open={notifOpen} onClose={() => setNotifOpen(false)} fullWidth maxWidth="sm">
+  <DialogTitle>Notifications</DialogTitle>
+
+  <DialogContent>
+    {notifications.length === 0 ? (
+      <Typography>No notifications</Typography>
+    ) : (
+      notifications.map((n) => (
+        <Box key={n.id} sx={{ mb: 2 }}>
+          <Typography fontWeight={700}>
+            {n.fromName}
+          </Typography>
+
+          <Typography variant="body2">
+            {n.type === "chat" && "sent you a message"}
+            {n.type === "pair" && "Pair update"}
+            {n.type === "report" && "Submitted a report"}
+          </Typography>
+
+          <Divider sx={{ mt: 1 }} />
+        </Box>
+      ))
+    )}
+  </DialogContent>
+
+  <DialogActions>
+    <Button onClick={() => setNotifOpen(false)}>Close</Button>
+  </DialogActions>
+</Dialog>
 
     </Box>
+    
   );
 }
