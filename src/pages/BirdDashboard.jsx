@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { auth, db } from "../firebaseConfig";
 import { BIRD_REQUEST_REASONS } from "../constants/pairRequestReasons";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 
 
 import { addDoc, serverTimestamp } from "firebase/firestore";
@@ -325,28 +326,26 @@ useEffect(() => {
                       onClick={() => goToChat(pair.buddyId)}
                       variant="contained"
                       startIcon={<ChatIcon />}
+                      
                     >
                       Chat
                     </Button>
                     <Button
-  variant="outlined"
-  color="warning"
-  sx={{ mt: 1 }}
   onClick={() => {
     setRequestOpen(true);
     setSelectedBuddyId(pair.buddyId);
   }}
+  variant="contained"
 >
   🔁 Request New Pair
 </Button>
-
-                    <Button
-                      variant="outlined"
-                      onClick={() => openProgress(pair.buddyId)}
-                      sx={{ color: "white", borderColor: "white" }}
-                    >
-                      Progress
-                    </Button>
+<Button
+  onClick={() => openProgress(pair.buddyId)}
+  variant="contained"
+  startIcon={<TrendingUpIcon />}
+>
+  Progress
+</Button>
                   </Stack>
                 </GlassCard>
               ))}
@@ -544,43 +543,95 @@ useEffect(() => {
     </Button>
   </DialogActions>
 </Dialog>
-<Dialog open={requestOpen} onClose={() => setRequestOpen(false)}>
-  <DialogTitle>Request New Pair</DialogTitle>
-  <DialogContent>
-    {BIRD_REQUEST_REASONS.map((r) => (
-      <Button
-        key={r}
-        fullWidth
-        sx={{ mt: 1 }}
-        variant={requestReason === r ? "contained" : "outlined"}
-        onClick={() => setRequestReason(r)}
-      >
-        {r}
-      </Button>
-    ))}
-  </DialogContent>
-  <DialogActions>
-    <Button onClick={() => setRequestOpen(false)}>Cancel</Button>
+<Dialog
+  open={requestOpen}
+  onClose={() => setRequestOpen(false)}
+  fullWidth
+  maxWidth="xs"
+  PaperProps={{
+    sx: {
+      borderRadius: 4,
+      background: "rgba(255,255,255,0.06)",
+      backdropFilter: "blur(16px) saturate(160%)",
+      border: "1px solid rgba(255,255,255,0.12)",
+      boxShadow: "0 30px 70px rgba(0,0,0,0.55)",
+      color: "#EAF0FF",
+    },
+  }}
+>
+<DialogTitle
+  sx={{
+    fontWeight: 900,
+    fontSize: 18,
+    color: "#5ED1C6",
+    borderBottom: "1px solid rgba(255,255,255,0.08)",
+  }}
+>
+  🔁 Request New Pair
+</DialogTitle>
+<DialogContent sx={{ mt: 1 }}>
+  {BIRD_REQUEST_REASONS.map((r) => (
     <Button
-      variant="contained"
-      onClick={async () => {
-        await addDoc(collection(db, "pairRequests"), {
-          requesterId: user.uid,
-          requesterEmail: user.email,
-          requesterRole: "bird",
-          buddyId: selectedBuddyId,
-          reason: requestReason,
-          status: "pending",
-          createdAt: serverTimestamp(),
-        });
-        alert("✅ Request sent to SuperBird");
-        setRequestOpen(false);
-        setRequestReason("");
+      key={r}
+      fullWidth
+      sx={{
+        mt: 1,
+        borderRadius: 2,
+        textTransform: "none",
+        fontWeight: 700,
+        color: "#fff",
+        borderColor: "rgba(255,255,255,0.2)",
+        background:
+          requestReason === r
+            ? "linear-gradient(135deg, #5ED1C6, #7B61FF)"
+            : "rgba(255,255,255,0.05)",
+        "&:hover": {
+          background:
+            requestReason === r
+              ? "linear-gradient(135deg, #5ED1C6, #7B61FF)"
+              : "rgba(255,255,255,0.1)",
+        },
       }}
+      variant="outlined"
+      onClick={() => setRequestReason(r)}
     >
-      Submit
+      {r}
     </Button>
-  </DialogActions>
+  ))}
+</DialogContent>
+<DialogActions sx={{ px: 3, pb: 2 }}>
+  <Button
+    onClick={() => setRequestOpen(false)}
+    sx={{ color: "#aaa", fontWeight: 600 }}
+  >
+    Cancel
+  </Button>
+
+  <Button
+    variant="contained"
+    sx={{
+      borderRadius: 2,
+      fontWeight: 800,
+      background: "linear-gradient(135deg, #5ED1C6, #7B61FF)",
+    }}
+    onClick={async () => {
+      await addDoc(collection(db, "pairRequests"), {
+        requesterId: user.uid,
+        requesterEmail: user.email,
+        requesterRole: "bird",
+        buddyId: selectedBuddyId,
+        reason: requestReason,
+        status: "pending",
+        createdAt: serverTimestamp(),
+      });
+      alert("✅ Request sent to SuperBird");
+      setRequestOpen(false);
+      setRequestReason("");
+    }}
+  >
+    Submit
+  </Button>
+</DialogActions>
 </Dialog>
 <Dialog open={notifOpen} onClose={() => setNotifOpen(false)} fullWidth maxWidth="sm">
   <DialogTitle>Notifications</DialogTitle>

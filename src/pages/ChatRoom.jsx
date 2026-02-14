@@ -56,6 +56,10 @@ export default function ChatRoom() {
   const [reportOpen, setReportOpen] = useState(false);
 const [reportReason, setReportReason] = useState("");
 const [reportText, setReportText] = useState("");
+const GLASS_BG = "rgba(255,255,255,0.06)";
+const GLASS_BORDER = "1px solid rgba(255,255,255,0.12)";
+const GLASS_BLUR = "blur(14px) saturate(160%)";
+const PAGE_BG = "linear-gradient(180deg, #063149ff 0%, #7aa5dfff 100%)";
 
 
   useEffect(() => {
@@ -266,8 +270,23 @@ await sendNotification(
     );
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
-      <AppBar position="static" color="primary" elevation={1}>
+    <Box
+  sx={{
+    display: "flex",
+    flexDirection: "column",
+    minHeight: "100vh",
+    background: PAGE_BG,
+  }}
+>
+      <AppBar
+  position="sticky"
+  elevation={0}
+  sx={{
+    background: GLASS_BG,
+    backdropFilter: GLASS_BLUR,
+    borderBottom: GLASS_BORDER,
+  }}
+>
         <Toolbar>
           <IconButton edge="start" color="inherit" onClick={() => navigate(-1)}>
             <ArrowBack />
@@ -276,8 +295,8 @@ await sendNotification(
             {partnerEmail ? partnerEmail.charAt(0).toUpperCase() : "B"}
           </Avatar>
           <Box>
-            <Typography variant="subtitle1">{partnerEmail || "Chat"}</Typography>
-            <Typography variant="caption" color="inherit">Open conversation</Typography>
+            <Typography variant="subtitle1" sx={{ color: "#EAF0FF", fontWeight: 800 }}>{partnerEmail || "Chat"}</Typography>
+            <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.6)" }}>Open conversation</Typography>
           </Box>
         </Toolbar>
       </AppBar>
@@ -287,7 +306,7 @@ await sendNotification(
           flex: 1,
           overflowY: "auto",
           p: 2,
-          background: "linear-gradient(135deg, #f6fbff 0%, #eef7f9 100%)",
+          background: "transparent",
         }}
       >
         {messages.map((msg) => (
@@ -305,7 +324,13 @@ await sendNotification(
               <Paper
                 elevation={0}
                 sx={{
-                  background: msg.senderId === user?.uid ? "linear-gradient(90deg,#3b82f6,#1e40af)" : "#f5f5f5",
+                  background:
+  msg.senderId === user?.uid
+    ? "linear-gradient(135deg, rgba(155,140,255,0.9), rgba(120,110,255,0.85))"
+    : GLASS_BG,
+backdropFilter: GLASS_BLUR,
+border: GLASS_BORDER,
+color: "#EAF0FF",
                   color: msg.senderId === user?.uid ? "#fff" : "#111",
                   borderRadius: 2,
                   px: 1.2,
@@ -338,7 +363,7 @@ await sendNotification(
                 )}
               </Paper>
 
-              <Typography variant="caption" sx={{ mt: 0.5, color: "text.secondary" }}>
+              <Typography variant="caption" sx={{ mt: 0.5, color: "rgba(255,255,255,0.6)" }}>
                 {msg.senderEmail ? msg.senderEmail : ""} • {formatTime(msg.timestamp)}
               </Typography>
             </Box>
@@ -353,16 +378,32 @@ await sendNotification(
         <div ref={bottomRef} />
       </Box>
 
-      <Paper sx={{ p: 1.25, position: "sticky", bottom: 0 }} elevation={3}>
+      <Paper
+  elevation={0}
+  sx={{
+    p: 1.25,
+    position: "sticky",
+    bottom: 0,
+    background: GLASS_BG,
+    backdropFilter: GLASS_BLUR,
+    borderTop: GLASS_BORDER,
+  }}
+>
         <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
           <TextField
-            fullWidth
-            placeholder="Type a message..."
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-            size="small"
-          />
+  fullWidth
+  placeholder="Type a message..."
+  value={newMessage}
+  onChange={(e) => setNewMessage(e.target.value)}
+  onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+  size="small"
+  sx={{
+    input: { color: "#EAF0FF" },
+    bgcolor: "rgba(255,255,255,0.04)",
+    borderRadius: 2,
+    "& fieldset": { border: "none" },
+  }}
+/>
 
           <input
             type="file"
@@ -372,7 +413,7 @@ await sendNotification(
             onChange={handleFileUpload}
           />
           <IconButton size="small" onClick={() => fileInputRef.current.click()}>
-            <CloudUpload fontSize="small" />
+            <CloudUpload sx={{ color: "#fff" }} />
           </IconButton>
 
           <input
@@ -409,7 +450,19 @@ await sendNotification(
         </Box>
       </Paper>
       {/* 🚨 REPORT DIALOG */}
-<Dialog open={reportOpen} onClose={() => setReportOpen(false)} fullWidth>
+<Dialog
+  open={reportOpen}
+  onClose={() => setReportOpen(false)}
+  fullWidth
+  PaperProps={{
+    sx: {
+      background: GLASS_BG,
+      backdropFilter: GLASS_BLUR,
+      border: GLASS_BORDER,
+      color: "#EAF0FF",
+    },
+  }}
+>
   <DialogTitle>Report User</DialogTitle>
 
   <DialogContent>

@@ -122,7 +122,7 @@ export default function Signup() {
               fontWeight: 700,
             },
             "& .Mui-selected": {
-              color: "#fff",
+              color: "#fff !important",
               backgroundColor:
                 role === "superbird"
                   ? "#EC4899"
