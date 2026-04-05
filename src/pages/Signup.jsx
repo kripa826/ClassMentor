@@ -203,15 +203,12 @@ export default function Signup() {
             "& .Mui-selected": {
               color: "#fff !important",
               backgroundColor:
-                role === "superbird"
-                  ? "#EC4899"
-                  : role === "bird"
-                    ? "#4FB3A6"
-                    : "#F5C56B",
+                role === "bird"
+                  ? "#4FB3A6"
+                  : "#F5C56B",
             },
           }}
         >
-          <ToggleButton value="superbird">🦅 Super Bird</ToggleButton>
           <ToggleButton value="bird">🐦 Bird</ToggleButton>
           <ToggleButton value="buddy">🐥 Buddy</ToggleButton>
         </ToggleButtonGroup>
@@ -352,11 +349,9 @@ export default function Signup() {
             textTransform: "none",
             letterSpacing: "0.5px",
             background:
-              role === "superbird"
-                ? "linear-gradient(135deg, #EC4899 0%, #7B61FF 100%)"
-                : role === "bird"
-                  ? "linear-gradient(135deg, #4FB3A6 0%, #7B61FF 100%)"
-                  : "linear-gradient(135deg, #F5C56B 0%, #7B61FF 100%)",
+              role === "bird"
+                ? "linear-gradient(135deg, #4FB3A6 0%, #7B61FF 100%)"
+                : "linear-gradient(135deg, #F5C56B 0%, #7B61FF 100%)",
             color: "#fff",
             boxShadow: "0 8px 20px rgba(123, 97, 255, 0.3)",
             transition: "all 0.3s ease",
@@ -419,6 +414,6 @@ export default function Signup() {
           </Link>
         </Typography>
       </Paper>
-    </Box>
+    </Box >
   );
 }
