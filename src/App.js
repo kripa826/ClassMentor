@@ -13,7 +13,7 @@ import Profile from "./pages/Profile";
 
 import { auth, db } from "./firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 
 function App() {
   const [user, setUser] = useState(null);
@@ -22,28 +22,51 @@ function App() {
 
   // ✅ Listen for auth state + fetch role
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    let unsubscribeSnapshot = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser) {
-        setUser(currentUser);
-        try {
-          const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-          if (userDoc.exists()) {
-            setRole(userDoc.data().role);
-          } else {
+        // Check Firestore for Role & Suspension via snapshot to avoid race conditions
+        unsubscribeSnapshot = onSnapshot(
+          doc(db, "users", currentUser.uid),
+          async (userDoc) => {
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              if (userData.isSuspended) {
+                await auth.signOut();
+                alert("Your account has been suspended.");
+                setUser(null);
+                setRole(null);
+              } else {
+                setUser(currentUser);
+                setRole(userData.role);
+              }
+            } else {
+              setRole(null);
+            }
+            setLoading(false);
+          },
+          (err) => {
+            console.error("Error fetching user data:", err);
             setRole(null);
+            setLoading(false);
           }
-        } catch (err) {
-          console.error("Error fetching user role:", err);
-          setRole(null);
-        }
+        );
       } else {
         setUser(null);
         setRole(null);
+        setLoading(false);
+        if (unsubscribeSnapshot) {
+          unsubscribeSnapshot();
+          unsubscribeSnapshot = null;
+        }
       }
-      setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
+    };
   }, []);
 
   // ⏳ Global loading screen
@@ -66,11 +89,11 @@ function App() {
 
   // 🔁 Helper redirect after login
   const redirectAfterLogin = () => {
-  if (role === "superbird") return <Navigate to="/admin" replace />;
-  if (role === "bird") return <Navigate to="/bird-dashboard" replace />;
-  if (role === "buddy") return <Navigate to="/buddy-dashboard" replace />;
-  return <Navigate to="/login" replace />;
-};
+    if (role === "superbird") return <Navigate to="/admin" replace />;
+    if (role === "bird") return <Navigate to="/bird-dashboard" replace />;
+    if (role === "buddy") return <Navigate to="/buddy-dashboard" replace />;
+    return <Navigate to="/login" replace />;
+  };
 
 
   return (
@@ -81,7 +104,7 @@ function App() {
         <Route
           path="/login"
           element={
-            user ? redirectAfterLogin() : <Login />
+            user && role ? redirectAfterLogin() : <Login />
           }
         />
 
@@ -89,7 +112,7 @@ function App() {
         <Route
           path="/signup"
           element={
-            user ? redirectAfterLogin() : <Signup />
+            user && role ? redirectAfterLogin() : <Signup />
           }
         />
 
@@ -106,7 +129,7 @@ function App() {
         />
 
         {/* 🪶 BIRD / 🐥 BUDDY DASHBOARD */}
-        
+
 
         {/* 💬 CHAT ROOM (ALL AUTH USERS) */}
         <Route
@@ -131,30 +154,30 @@ function App() {
         {/* 🌐 FALLBACK */}
         <Route path="*" element={<Navigate to="/login" replace />} />
         <Route
-  path="/profile"
-  element={user ? <Profile /> : <Navigate to="/login" replace />}
-/>
-<Route
-  path="/bird-dashboard"
-  element={
-    user && role === "bird" ? (
-      <BirdDashboard />
-    ) : (
-      <Navigate to="/login" replace />
-    )
-  }
-/>
+          path="/profile"
+          element={user ? <Profile /> : <Navigate to="/login" replace />}
+        />
+        <Route
+          path="/bird-dashboard"
+          element={
+            user && role === "bird" ? (
+              <BirdDashboard />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
 
-<Route
-  path="/buddy-dashboard"
-  element={
-    user && role === "buddy" ? (
-      <BuddyDashboard />
-    ) : (
-      <Navigate to="/login" replace />
-    )
-  }
-/>
+        <Route
+          path="/buddy-dashboard"
+          element={
+            user && role === "buddy" ? (
+              <BuddyDashboard />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
 
 
       </Routes>

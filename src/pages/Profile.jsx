@@ -16,6 +16,7 @@ import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { useNavigate } from "react-router-dom";
+import { PALETTE } from "../constants/theme";
 
 export default function Profile() {
   const [userData, setUserData] = useState(null);
@@ -96,11 +97,12 @@ export default function Profile() {
 
   const { email, role, avatarUrl } = userData;
 
+  // ... inside Profile component return ...
   return (
     <Box
       sx={{
         minHeight: "100vh",
-        background: "linear-gradient(180deg, #063149 0%, #7aa5df 100%)",
+        background: PALETTE.pageBg,
         display: "flex",
         justifyContent: "center",
         alignItems: "center",
@@ -119,28 +121,28 @@ export default function Profile() {
           border: "1px solid rgba(255,255,255,0.25)",
           color: "#fff",
         }}
-        
+
       >
         {/* Back Button */}
-<Box sx={{ mb: 1 }}>
-  <Button
-    startIcon={<ArrowBackIcon />}
-    onClick={() => navigate(-1)}
-    sx={{
-      color: "#fff",
-      fontWeight: 700,
-      textTransform: "none",
-      borderRadius: 2,
-      background: "rgba(255,255,255,0.08)",
-      backdropFilter: "blur(10px)",
-      "&:hover": {
-        background: "rgba(255,255,255,0.16)",
-      },
-    }}
-  >
-    Back
-  </Button>
-</Box>
+        <Box sx={{ mb: 1 }}>
+          <Button
+            startIcon={<ArrowBackIcon />}
+            onClick={() => navigate(-1)}
+            sx={{
+              color: "#fff",
+              fontWeight: 700,
+              textTransform: "none",
+              borderRadius: 2,
+              background: "rgba(255,255,255,0.08)",
+              backdropFilter: "blur(10px)",
+              "&:hover": {
+                background: "rgba(255,255,255,0.16)",
+              },
+            }}
+          >
+            Back
+          </Button>
+        </Box>
 
         {/* Avatar */}
         <Stack alignItems="center" spacing={1}>
@@ -168,8 +170,8 @@ export default function Profile() {
             {role === "superbird"
               ? "🦅 Super Bird"
               : role === "bird"
-              ? "🐦 Bird"
-              : "🐥 Buddy"}
+                ? "🐦 Bird"
+                : "🐥 Buddy"}
           </Typography>
         </Stack>
 

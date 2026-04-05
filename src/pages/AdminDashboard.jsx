@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useLayoutEffect, useRef } from "react";
+import NotificationBell from "../components/NotificationBell";
 import {
   collection,
   getDocs,
@@ -12,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import { sendNotification } from "../utils/sendNotification";
+import { logActivity } from "../utils/logActivity"; // NEW
 import LogoutIcon from "@mui/icons-material/Logout";
 
 
@@ -59,57 +61,8 @@ import {
 } from "@mui/icons-material";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import AccountCircleIcon from "@mui/icons-material/AccountCircle";
-
-/* ---------- Vibrant palette (same hues, higher saturation & contrast) ---------- */
-const PALETTE = {
-  mintTeal: "#5ED1C6",        // softer teal (Birds)
-  peach: "#E6A08A",          // warm peach (Buddies)
-  softYellow: "#F4D58D",     // pastel yellow (chips / highlights)
-  pastelPurple: "#9B8CFF",   // primary accent (Pairs / CTAs)
-
-  pageBg: "linear-gradient(180deg, #063149ff 0%, #7aa5dfff 100%)",
-
-  cardBorder: "rgba(255,255,255,0.08)",
-  textDark: "#EAF0FF",
-};
-
-/* ---------- glass-poster gradients inspired by the image ---------- */
-const GLASS_GRADIENTS = {
-  teal: {
-    background: `
-      linear-gradient(135deg, rgba(94,209,198,0.85) 0%, rgba(72,180,255,0.85) 70%),
-      radial-gradient(900px 260px at 10% 10%, rgba(255,255,255,0.10), transparent 14%)
-    `,
-    avatar: "linear-gradient(135deg, #5ED1C6, #AEECEF)",
-    chipBg: "#5ED1C6",
-    text: "#062925",
-    border: "1px solid rgba(255,255,255,0.12)",
-  },
-
-  magenta: {
-    background: `
-      linear-gradient(135deg, rgba(230,160,138,0.9) 0%, rgba(255,135,175,0.85) 70%),
-      radial-gradient(900px 260px at 12% 10%, rgba(255,255,255,0.10), transparent 14%)
-    `,
-    avatar: "linear-gradient(135deg, #E6A08A, #FFD1C4)",
-    chipBg: "#E6A08A",
-    text: "#3A1610",
-    border: "1px solid rgba(255,255,255,0.12)",
-  },
-
-  yellow: {
-    background: `
-      linear-gradient(135deg, rgba(155,140,255,0.9) 0%, rgba(120,110,255,0.85) 70%),
-      radial-gradient(900px 260px at 12% 10%, rgba(255,255,255,0.10), transparent 14%)
-    `,
-    avatar: "linear-gradient(135deg, #9B8CFF, #C7BFFF)",
-    chipBg: "#9B8CFF",
-    text: "#1A1445",
-    border: "1px solid rgba(255,255,255,0.12)",
-  },
-};
-
+import { PALETTE, GLASS_GRADIENTS } from "../constants/theme";
+import GlassCard from "../components/GlassCard";
 
 const glassBox = {
   background: "rgba(255,255,255,0.05)",
@@ -138,28 +91,6 @@ const QUICK_TABS = [
   { id: "requests", label: "Requests" },
 
 ];
-
-/* ---------- GlassCard component (frosted + vibrant tint) ---------- */
-function GlassCard({ children, sx = {}, ...props }) {
-  return (
-    <Paper
-      elevation={0}
-      sx={{
-        backgroundColor: "rgba(255,255,255,0.04)",
-        backdropFilter: "blur(10px)",
-        border: `1px solid ${PALETTE.cardBorder}`,
-        borderRadius: 12,
-        p: 2.5,
-        boxShadow: "0 10px 30px rgba(0,0,0,0.45)",
-        color: PALETTE.textDark,
-        ...sx,
-      }}
-      {...props}
-    >
-      {children}
-    </Paper>
-  );
-}
 
 /* ---------- Framer Motion variants ---------- */
 const statCardVariant = {
@@ -192,7 +123,8 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("birds");
   const [notifications, setNotifications] = useState([]);
-const [notifOpen, setNotifOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [profileName, setProfileName] = useState("");
 
 
   // helper for quick actions tabs to compute slider position
@@ -252,7 +184,12 @@ const [notifOpen, setNotifOpen] = useState(false);
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [pairRequests, setPairRequests] = useState([]);
 
-const [reports, setReports] = useState([]);
+  const [reports, setReports] = useState([]);
+  const [allUsersMap, setAllUsersMap] = useState({}); // NEW: map userId -> user data
+  const [reportFilter, setReportFilter] = useState("all"); // NEW: 'all', 'pending', 'resolved'
+  const [reportSort, setReportSort] = useState("newest");  // NEW: 'newest', 'oldest'
+  const [selectedReport, setSelectedReport] = useState(null); // NEW
+  const [reportDetailsOpen, setReportDetailsOpen] = useState(false); // NEW
 
   // UI extras
   const [q, setQ] = useState("");
@@ -269,26 +206,26 @@ const [reports, setReports] = useState([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // 🔔 Notifications listener
-useEffect(() => {
-  if (!auth.currentUser) return;
+  useEffect(() => {
+    if (!auth.currentUser) return;
 
-  const q = query(
-    collection(db, "notifications"),
-    where("toUserId", "==", auth.currentUser.uid)
-  );
+    const q = query(
+      collection(db, "notifications"),
+      where("toUserId", "==", auth.currentUser.uid)
+    );
 
-  const unsub = onSnapshot(q, (snap) => {
-    setNotifications(
-  snap.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  }))
-);
+    const unsub = onSnapshot(q, (snap) => {
+      setNotifications(
+        snap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }))
+      );
 
-  });
+    });
 
-  return () => unsub();
-}, []);
+    return () => unsub();
+  }, []);
 
 
   const fetchData = async () => {
@@ -303,16 +240,29 @@ useEffect(() => {
         id: docSnap.id,
         ...docSnap.data(),
       }));
-const requestsSnap = await getDocs(collection(db, "pairRequests"));
-setPairRequests(requestsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      // Create lookup map
+      const usersMap = {};
+      allUsers.forEach(u => { usersMap[u.id] = u; });
+      console.log("DEBUG: All Users Map:", usersMap); // DEBUG
+      setAllUsersMap(usersMap);
+
+      if (auth.currentUser && usersMap[auth.currentUser.uid]) {
+        setProfileName(usersMap[auth.currentUser.uid].name || "Super Bird");
+      }
+
+      const requestsSnap = await getDocs(collection(db, "pairRequests"));
+      setPairRequests(requestsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
       const reportsSnap = await getDocs(collection(db, "reports"));
-setReports(
-  reportsSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
-);
+      const reportsData = reportsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      console.log("DEBUG: Reports Data:", reportsData); // DEBUG
+      setReports(reportsData);
 
 
-      const birdUsers = allUsers.filter((u) => u.role === "bird");
+      // Deduplicate birds by email
+      const rawBirds = allUsers.filter((u) => u.role === "bird");
+      const birdUsers = Array.from(new Map(rawBirds.map((b) => [b.email, b])).values());
       const buddyUsers = allUsers.filter((u) => u.role === "buddy");
       const pairsData = pairsSnapshot.docs.map((p) => ({
         id: p.id,
@@ -352,12 +302,12 @@ setReports(
     return buddies.filter((b) => !assignedIds.has(b.id));
   }, [buddies, pairs]);
   const getBirdEmail = (birdId) =>
-  birds.find((b) => b.id === birdId)?.email || "Unknown Bird";
+    birds.find((b) => b.id === birdId)?.email || "Unknown Bird";
 
-const getBuddyEmail = (buddyId) =>
-  buddies.find((b) => b.id === buddyId)?.email || "Unknown Buddy";
+  const getBuddyEmail = (buddyId) =>
+    buddies.find((b) => b.id === buddyId)?.email || "Unknown Buddy";
 
-  
+
 
   const handleDeletePair = async (pairId) => {
     if (!window.confirm("Delete this pair?")) return;
@@ -427,22 +377,22 @@ const getBuddyEmail = (buddyId) =>
       buddyId,
       createdAt: new Date(),
     });
-    
-   await sendNotification(
-  selectedBird.id,
-  auth.currentUser.uid,
-  "SuperBird",
-  "pair",
-  "A new buddy has been assigned to you"
-);
 
-await sendNotification(
-  buddyId,
-  auth.currentUser.uid,
-  "SuperBird",
-  "You have been assigned a new bird mentor",
-  "pair"
-);
+    await sendNotification(
+      selectedBird.id,
+      auth.currentUser.uid,
+      "SuperBird",
+      "A new buddy has been assigned to you",
+      "pair"
+    );
+
+    await sendNotification(
+      buddyId,
+      auth.currentUser.uid,
+      "SuperBird",
+      "You have been assigned a new bird mentor",
+      "pair"
+    );
 
 
 
@@ -460,21 +410,21 @@ await sendNotification(
     if (snap.empty) return alert("Pair document not found.");
     await deleteDoc(doc(db, "pairs", snap.docs[0].id));
     await fetchData();
-   await sendNotification(
-  birdId,
-  auth.currentUser.uid,
-  "SuperBird",
-  "pair",
-  "A buddy was removed from your pair"
-);
+    await sendNotification(
+      birdId,
+      auth.currentUser.uid,
+      "SuperBird",
+      "A buddy was removed from your pair",
+      "pair"
+    );
 
-await sendNotification(
-  buddyId,
-  auth.currentUser.uid,
-  "SuperBird",
-  "pair",
-  "You were removed from your bird mentor"
-);
+    await sendNotification(
+      buddyId,
+      auth.currentUser.uid,
+      "SuperBird",
+      "You were removed from your bird mentor",
+      "pair",
+    );
 
 
   };
@@ -559,10 +509,10 @@ await sendNotification(
                 sx={{
                   fontWeight: 800,
                   color: PALETTE.textDark,
-                  
+
                 }}
               >
-                🦅 Super Bird
+                🦅 {profileName || "Super Bird"}
               </Typography>
               <Typography variant="caption" color="rgba(255,255,255,0.6)">
                 Admin Dashboard
@@ -572,6 +522,7 @@ await sendNotification(
 
 
           <Stack direction="row" spacing={1} alignItems="center">
+
             <TextField
               size="small"
               placeholder="Search birds / buddies / pairs..."
@@ -595,32 +546,25 @@ await sendNotification(
 
             <Stack direction="row" spacing={1} alignItems="center">
 
-  {/* 🔔 Notification Button */}
- <Button
-  onClick={async () => {
-    setNotifOpen(true);
+              {auth.currentUser && (
+                <NotificationBell userId={auth.currentUser.uid} />
+              )}
 
-    // mark all unread as read
-    const unread = notifications.filter(n => !n.read);
+              {/* Logout */}
+              <Tooltip title="Logout">
+                <IconButton
+                  onClick={handleLogout}
+                  sx={{
+                    color: "#FF6B6B",
+                    bgcolor: "rgba(255,107,107,0.1)",
+                    "&:hover": { bgcolor: "rgba(255,107,107,0.2)" }
+                  }}
+                >
+                  <LogoutIcon />
+                </IconButton>
+              </Tooltip>
 
-    for (let n of unread) {
-      await updateDoc(doc(db, "notifications", n.id), {
-        read: true
-      });
-    }
-  }}
->
-  🔔 {notifications.filter(n => !n.read).length}
-</Button>
-
-  {/* Logout */}
-  <Tooltip title="Logout">
-    <IconButton onClick={handleLogout}>
-      <LogoutIcon sx={{ color: PALETTE.text }} />
-    </IconButton>
-  </Tooltip>
-
-</Stack>
+            </Stack>
 
           </Stack>
         </Toolbar>
@@ -734,19 +678,19 @@ await sendNotification(
           {/* Quick Actions (yellow poster look with sliding pill) */}
           <motion.div variants={statCardVariant} initial="hidden" animate="show" style={{ flex: 1 }}>
             <GlassCard
-            sx={{
-    backgroundImage: GLASS_GRADIENTS.yellow.background,
-    backgroundBlendMode: "normal, soft-light, overlay",
-    color: GLASS_GRADIENTS.yellow.text,
-    borderRadius: 12,
-    border: GLASS_GRADIENTS.yellow.border,
-    p: 2,
-    boxShadow: "0 10px 32px rgba(80,50,0,0.12), inset 0 -6px 18px rgba(255,255,255,0.03)",
-    backdropFilter: "blur(8px) saturate(110%)",
-    width: "100%",
-    maxWidth: 380,
-    minHeight: 120,
-  }}
+              sx={{
+                backgroundImage: GLASS_GRADIENTS.yellow.background,
+                backgroundBlendMode: "normal, soft-light, overlay",
+                color: GLASS_GRADIENTS.yellow.text,
+                borderRadius: 12,
+                border: GLASS_GRADIENTS.yellow.border,
+                p: 2,
+                boxShadow: "0 10px 32px rgba(80,50,0,0.12), inset 0 -6px 18px rgba(255,255,255,0.03)",
+                backdropFilter: "blur(8px) saturate(110%)",
+                width: "100%",
+                maxWidth: 380,
+                minHeight: 120,
+              }}
             >
               <Typography variant="subtitle2" color="rgba(255,255,255,0.9)" sx={{ mb: 1 }}>
                 Quick Actions
@@ -779,37 +723,37 @@ await sendNotification(
                   }}
                 >
                   {QUICK_TABS.map((item) => {
-  const isActive = activeTab === item.id; // ✅ MUST BE HERE
+                    const isActive = activeTab === item.id; // ✅ MUST BE HERE
 
-  return (
-    <Button
-      key={item.id}
-      role="tab"
-      aria-selected={isActive}
-      onClick={() => setActiveTab(item.id)}
-      sx={{
-        flex: 1,
-        minWidth: 0,
-        px: 1.2,
-        py: 0.6,
-        borderRadius: 999,
-        textTransform: "none",
-        fontWeight: 800,
-        fontSize: 13,
-        
-        bgcolor: "transparent",
-        transform: isActive ? "scale(1.02)" : "none",
-        transition: "all 0.18s ease",
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-      }}
-      id={`qa-pill-${item.id}`}
-    >
-      {item.label}
-    </Button>
-  );
-})}
+                    return (
+                      <Button
+                        key={item.id}
+                        role="tab"
+                        aria-selected={isActive}
+                        onClick={() => setActiveTab(item.id)}
+                        sx={{
+                          flex: 1,
+                          minWidth: 0,
+                          px: 1.2,
+                          py: 0.6,
+                          borderRadius: 999,
+                          textTransform: "none",
+                          fontWeight: 800,
+                          fontSize: 13,
+
+                          bgcolor: "transparent",
+                          transform: isActive ? "scale(1.02)" : "none",
+                          transition: "all 0.18s ease",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                        id={`qa-pill-${item.id}`}
+                      >
+                        {item.label}
+                      </Button>
+                    );
+                  })}
                 </Box>
 
                 {/* measured sliding indicator (absolute) */}
@@ -887,7 +831,7 @@ await sendNotification(
                               <Box sx={{ flex: 1 }}>
                                 <Typography sx={{ fontWeight: 800, color: PALETTE.textDark }}>{bird.email}</Typography>
                                 <Typography variant="caption" color="text.secondary">
-                                  {bird.buddies.length} buddies • id: {bird.id}
+                                  {bird.buddies.length} {bird.buddies.length === 1 ? "buddy" : "buddies"} • id: {bird.id}
                                 </Typography>
 
                                 <Stack direction="row" spacing={1} mt={1}>
@@ -925,24 +869,24 @@ await sendNotification(
                                 <Stack direction="row" spacing={1}>
                                   <motion.div whileTap={buttonTap}>
                                     <Button
-                                    size="small"
-                                    variant="contained"
-                                    startIcon={<ExpandMore />}
-                                    onClick={() => handleOpenActionsDialog(bird.id)}
-                                    sx={{
-                                      bgcolor: PALETTE.pastelPurple,
-                                      color: "white",
-                                      fontWeight: 800,
-                                      textTransform: "none",
-                                      borderRadius: 2,
-                                      px: 2,
-                                      "&:hover": {
-                                        bgcolor: "#8577ff",
-                                      },
-                                    }}
-                                  >
-                                    Actions
-                                  </Button>
+                                      size="small"
+                                      variant="contained"
+                                      startIcon={<ExpandMore />}
+                                      onClick={() => handleOpenActionsDialog(bird.id)}
+                                      sx={{
+                                        bgcolor: PALETTE.pastelPurple,
+                                        color: "white",
+                                        fontWeight: 800,
+                                        textTransform: "none",
+                                        borderRadius: 2,
+                                        px: 2,
+                                        "&:hover": {
+                                          bgcolor: "#8577ff",
+                                        },
+                                      }}
+                                    >
+                                      Actions
+                                    </Button>
                                   </motion.div>
                                 </Stack>
                               </Stack>
@@ -1000,20 +944,13 @@ await sendNotification(
                               </Typography>
                             </Box>
                             <Stack direction="row" spacing={1}>
-                              <motion.div whileTap={buttonTap}>
-                                <Button
-                                  size="small"
-                                  onClick={() => goToChat(buddy.id)}
-                                  startIcon={<ChatIcon />}
-                                  sx={{
-                                    bgcolor: "white",
-                                    fontWeight: 700,
-                                    ":hover": { bgcolor: "#fffaf5" },
-                                  }}
-                                >
-                                  Chat
-                                </Button>
-                              </motion.div>
+                              <Tooltip title="Chat with buddy">
+                                <motion.div whileTap={buttonTap}>
+                                  <IconButton onClick={() => goToChat(buddy.id)} sx={{ bgcolor: "white" }}>
+                                    <ChatIcon />
+                                  </IconButton>
+                                </motion.div>
+                              </Tooltip>
                             </Stack>
                           </GlassCard>
                         </motion.div>
@@ -1075,18 +1012,18 @@ await sendNotification(
                             </motion.div>
 
                             <Box>
-  <Tooltip title={`Bird ID: ${pair.birdId}`}>
-    <Typography sx={{ fontWeight: 800, color: PALETTE.textDark }}>
-      🐦 {getBirdEmail(pair.birdId)}
-    </Typography>
-  </Tooltip>
+                              <Tooltip title={`Bird ID: ${pair.birdId}`}>
+                                <Typography sx={{ fontWeight: 800, color: PALETTE.textDark }}>
+                                  🐦 {getBirdEmail(pair.birdId)}
+                                </Typography>
+                              </Tooltip>
 
-  <Tooltip title={`Buddy ID: ${pair.buddyId}`}>
-    <Typography variant="caption" color="text.secondary">
-      🧑‍🎓 {getBuddyEmail(pair.buddyId)}
-    </Typography>
-  </Tooltip>
-</Box>
+                              <Tooltip title={`Buddy ID: ${pair.buddyId}`}>
+                                <Typography variant="caption" color="text.secondary">
+                                  🧑‍🎓 {getBuddyEmail(pair.buddyId)}
+                                </Typography>
+                              </Tooltip>
+                            </Box>
 
                           </Stack>
 
@@ -1106,619 +1043,715 @@ await sendNotification(
               </Stack>
             )}
             {activeTab === "reports" && (
-  <Stack spacing={2}>
-    <Typography variant="h5" sx={{ color: PALETTE.textDark }}>
-      🚨 Reports
-    </Typography>
+              <Stack spacing={2}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="h5" sx={{ color: PALETTE.textDark }}>
+                    🚨 Reports
+                  </Typography>
 
-    {reports.length === 0 ? (
-      <Typography>No reports submitted.</Typography>
-    ) : (
-      reports.map((r) => (
-        <GlassCard key={r.id}>
-          <Typography fontWeight={800}>{r.reason}</Typography>
+                  {/* Filters */}
+                  <Stack direction="row" spacing={2}>
+                    <FormControl size="small" sx={{ minWidth: 120 }}>
+                      <Select
+                        value={reportFilter}
+                        onChange={(e) => setReportFilter(e.target.value)}
+                        sx={{ bgcolor: "rgba(255,255,255,0.05)", color: "white" }}
+                      >
+                        <MenuItem value="all">All Status</MenuItem>
+                        <MenuItem value="pending">Pending</MenuItem>
+                        <MenuItem value="resolved">Resolved</MenuItem>
+                      </Select>
+                    </FormControl>
 
-          <Typography variant="caption" display="block">
-            Reporter: {r.reporterEmail}
-          </Typography>
+                    <FormControl size="small" sx={{ minWidth: 120 }}>
+                      <Select
+                        value={reportSort}
+                        onChange={(e) => setReportSort(e.target.value)}
+                        sx={{ bgcolor: "rgba(255,255,255,0.05)", color: "white" }}
+                      >
+                        <MenuItem value="newest">Newest First</MenuItem>
+                        <MenuItem value="oldest">Oldest First</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Stack>
+                </Stack>
 
-          <Typography variant="caption" display="block">
-            Pair: {r.pairId}
-          </Typography>
+                <GlassCard sx={{ p: 0, overflow: "hidden" }}>
+                  {reports.length === 0 ? (
+                    <Box sx={{ p: 4, textAlign: "center" }}>
+                      <Typography>No reports found.</Typography>
+                    </Box>
+                  ) : (
+                    <Box sx={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", color: "#EAF0FF" }}>
+                        <thead>
+                          <tr style={{ background: "rgba(255,255,255,0.05)", textAlign: "left" }}>
+                            <th style={{ padding: "12px 16px" }}>Status</th>
+                            <th style={{ padding: "12px 16px" }}>Reporter</th>
+                            <th style={{ padding: "12px 16px" }}>Reported User</th>
+                            <th style={{ padding: "12px 16px" }}>Reason</th>
+                            <th style={{ padding: "12px 16px" }}>Date</th>
+                            <th style={{ padding: "12px 16px", textAlign: "right" }}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reports
+                            .filter(r => {
+                              if (reportFilter === "all") return true;
+                              if (reportFilter === "pending") return r.status === "pending";
+                              if (reportFilter === "resolved") return r.status === "resolved" || r.status === "reviewed";
+                              return true;
+                            })
+                            .sort((a, b) => {
+                              const dateA = a.createdAt?.seconds || 0;
+                              const dateB = b.createdAt?.seconds || 0;
+                              return reportSort === "newest" ? dateB - dateA : dateA - dateB;
+                            })
+                            .map((r) => (
+                              <tr key={r.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                                <td style={{ padding: "12px 16px" }}>
+                                  <Chip
+                                    label={(r.status === "resolved" || r.status === "reviewed") ? "RESOLVED" : r.status.toUpperCase()}
+                                    size="small"
+                                    color={r.status === "pending" ? "error" : "success"}
+                                    sx={{ fontWeight: "bold" }}
+                                  />
+                                </td>
+                                <td style={{ padding: "12px 16px" }}>
+                                  <Typography variant="body2" fontWeight={700}>{r.reporterEmail || "Unknown"}</Typography>
+                                  <Typography variant="caption" sx={{ opacity: 0.7 }}>{r.reporterRole}</Typography>
+                                </td>
+                                <td style={{ padding: "12px 16px" }}>
+                                  <Typography variant="body2" fontWeight={700}>
+                                    {(() => {
+                                      const user = allUsersMap[r.reportedUserId];
+                                      console.log(`Rendering report ${r.id}:`, { reportedUserId: r.reportedUserId, userFound: user });
+                                      return user?.name || user?.email || r.reportedUserEmail || r.reportedUserId || "Unknown";
+                                    })()}
+                                  </Typography>
+                                  <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                                    {r.reportedUserEmail || (allUsersMap[r.reportedUserId]?.email)}
+                                  </Typography>
+                                </td>
+                                <td style={{ padding: "12px 16px" }}>{r.reason}</td>
+                                <td style={{ padding: "12px 16px" }}>
+                                  {r.createdAt?.toDate().toLocaleDateString()}
+                                </td>
+                                <td style={{ padding: "12px 16px", textAlign: "right" }}>
+                                  <Button
+                                    size="small"
+                                    onClick={() => {
+                                      setSelectedReport(r);
+                                      setReportDetailsOpen(true);
+                                    }}
+                                    sx={{ color: PALETTE.mintTeal }}
+                                  >
+                                    View
+                                  </Button>
+                                  {r.status === "pending" && (
+                                    <Button
+                                      size="small"
+                                      onClick={async () => {
+                                        await updateDoc(doc(db, "reports", r.id), { status: "resolved" });
+                                        fetchData();
+                                      }}
+                                      sx={{ color: PALETTE.softYellow }}
+                                    >
+                                      Resolve
+                                    </Button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </Box>
+                  )}
+                </GlassCard>
+              </Stack>
+            )}
+            {activeTab === "requests" && (
+              <Stack spacing={2}>
+                <Typography variant="h5" sx={{ color: PALETTE.textDark }}>
+                  🔔 Pair Requests
+                </Typography>
 
-          <Chip
-            label={r.status}
-            color={r.status === "pending" ? "warning" : "success"}
-            sx={{ mt: 1 }}
-          />
+                {pairRequests.length === 0 ? (
+                  <Typography>No requests yet.</Typography>
+                ) : (
+                  pairRequests.map((req) => (
+                    <GlassCard key={req.id}>
+                      <Typography fontWeight={800}>
+                        {req.requesterEmail}
+                      </Typography>
 
-          <Button
-            size="small"
-            sx={{ mt: 1 }}
-            onClick={async () => {
-              await updateDoc(doc(db, "reports", r.id), {
-                status: "reviewed",
-              });
-              fetchData();
-            }}
-          >
-            Mark Reviewed
-          </Button>
-        </GlassCard>
-      ))
-    )}
-  </Stack>
-)}
-{activeTab === "requests" && (
-  <Stack spacing={2}>
-    <Typography variant="h5" sx={{ color: PALETTE.textDark }}>
-      🔔 Pair Requests
-    </Typography>
+                      <Typography variant="caption" display="block">
+                        Reason: {req.reason}
+                      </Typography>
 
-    {pairRequests.length === 0 ? (
-      <Typography>No requests yet.</Typography>
-    ) : (
-      pairRequests.map((req) => (
-        <GlassCard key={req.id}>
-          <Typography fontWeight={800}>
-            {req.requesterEmail}
-          </Typography>
+                      <Typography variant="caption" display="block">
+                        Role: {req.requesterRole}
+                      </Typography>
 
-          <Typography variant="caption" display="block">
-            Reason: {req.reason}
-          </Typography>
+                      <Stack direction="row" spacing={1} mt={1}>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          onClick={async () => {
+                            console.log("REQ:", req);
 
-          <Typography variant="caption" display="block">
-           Role: {req.requesterRole}
-          </Typography>
+                            let birdId, buddyId;
 
-          <Stack direction="row" spacing={1} mt={1}>
-            <Button
-  size="small"
-  variant="contained"
-  onClick={async () => {
-  console.log("REQ:", req);
+                            if (req.requesterRole === "buddy") {
+                              birdId = req.requestedForId;
+                              buddyId = req.requesterId;
+                            } else if (req.requesterRole === "bird") {
+                              birdId = req.requesterId;
+                              buddyId = req.buddyId; // ✅ FIX HERE
+                            }
 
-  let birdId, buddyId;
+                            if (!birdId || !buddyId) {
+                              alert("❌ Missing user IDs");
+                              return;
+                            }
 
-  if (req.requesterRole === "buddy") {
-    birdId = req.requestedForId;
-    buddyId = req.requesterId;
-  } else if (req.requesterRole === "bird") {
-    birdId = req.requesterId;
-    buddyId = req.buddyId; // ✅ FIX HERE
-  }
+                            console.log("FINAL:", { birdId, buddyId });
 
-  if (!birdId || !buddyId) {
-    alert("❌ Missing user IDs");
-    return;
-  }
+                            // Check if pair already exists before creating
+                            const existingPairQuery = query(
+                              collection(db, "pairs"),
+                              where("birdId", "==", birdId),
+                              where("buddyId", "==", buddyId)
+                            );
+                            const existingPairSnap = await getDocs(existingPairQuery);
 
-  console.log("FINAL:", { birdId, buddyId });
+                            if (existingPairSnap.empty) {
+                              await addDoc(collection(db, "pairs"), {
+                                birdId,
+                                buddyId,
+                                createdAt: new Date(),
+                              });
+                            } else {
+                              console.warn("Pair already exists, skipping creation.");
+                            }
 
-  await addDoc(collection(db, "pairs"), {
-    birdId,
-    buddyId,
-    createdAt: new Date(),
-  });
+                            await deleteDoc(doc(db, "pairRequests", req.id));
+                            fetchData();
+                          }}
+                          sx={{ bgcolor: PALETTE.mintTeal, fontWeight: 800 }}
+                        >
+                          Approve
+                        </Button>
 
-  await deleteDoc(doc(db, "pairRequests", req.id));
-  fetchData();
-}}
-  sx={{ bgcolor: PALETTE.mintTeal, fontWeight: 800 }}
->
-  Approve
-</Button>
-
-            <Button
-              size="small"
-              color="error"
-              onClick={async () => {
-                await deleteDoc(doc(db, "pairRequests", req.id));
-                fetchData();
-              }}
-            >
-              Reject
-            </Button>
-          </Stack>
-        </GlassCard>
-      ))
-    )}
-  </Stack>
-)}
+                        <Button
+                          size="small"
+                          color="error"
+                          onClick={async () => {
+                            await deleteDoc(doc(db, "pairRequests", req.id));
+                            fetchData();
+                          }}
+                        >
+                          Reject
+                        </Button>
+                      </Stack>
+                    </GlassCard>
+                  ))
+                )}
+              </Stack>
+            )}
 
           </Box>
         </GlassCard>
       </Box>
-      
+
 
       {/* Assign Buddy Dialog */}
       {/* Add Buddy Dialog */}
-      
-<Dialog
-  open={assignDialogOpen}
-  onClose={handleCloseAssignDialog}
-  fullWidth
-  maxWidth="sm"
-  PaperProps={{
-    sx: {
-      borderRadius: 4,
-      background: "rgba(255,255,255,0.06)",
-      backdropFilter: "blur(16px) saturate(160%)",
-      border: "1px solid rgba(255,255,255,0.12)",
-      boxShadow: "0 30px 70px rgba(0,0,0,0.55)",
-      color: PALETTE.textDark,
-    },
-  }}
->
-  {/* ===== Header ===== */}
-  <DialogTitle
-    sx={{
-      fontWeight: 900,
-      fontSize: 18,
-      letterSpacing: 0.5,
-      color: PALETTE.softYellow,
-      display: "flex",
-      alignItems: "center",
-      gap: 1,
-      borderBottom: "1px solid rgba(255,255,255,0.08)",
-    }}
-  >
-    Add Buddy
-    <Typography
-      component="span"
-      sx={{
-        fontWeight: 600,
-        opacity: 0.75,
-        fontSize: 13,
-      }}
-    >
-      — {selectedBird?.email}
-    </Typography>
-  </DialogTitle>
 
-      
-  {/* ===== Content ===== */}
-  <DialogContent
-    dividers
-    sx={{
-      px: 3,
-      py: 2,
-      borderColor: "rgba(255,255,255,0.06)",
-    }}
-  >
-    {unassignedBuddies.length === 0 ? (
-      <Box sx={{ textAlign: "center", py: 4 }}>
-        <Typography sx={{ fontWeight: 700 }}>
-          No unassigned buddies available
-        </Typography>
-      </Box>
-    ) : (
-      <List dense>
-        {unassignedBuddies.map((buddy) => (
-          <ListItem
-            key={buddy.id}
+      <Dialog
+        open={assignDialogOpen}
+        onClose={handleCloseAssignDialog}
+        fullWidth
+        maxWidth="sm"
+        PaperProps={{
+          sx: {
+            borderRadius: 4,
+            background: "rgba(255,255,255,0.06)",
+            backdropFilter: "blur(16px) saturate(160%)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            boxShadow: "0 30px 70px rgba(0,0,0,0.55)",
+            color: PALETTE.textDark,
+          },
+        }}
+      >
+        {/* ===== Header ===== */}
+        <DialogTitle
+          sx={{
+            fontWeight: 900,
+            fontSize: 18,
+            letterSpacing: 0.5,
+            color: PALETTE.softYellow,
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          Add Buddy
+          <Typography
+            component="span"
             sx={{
-              mb: 1,
-              borderRadius: 2,
-              background: "rgba(255,255,255,0.04)",
-              transition: "background 160ms ease",
-              "&:hover": {
-                background: "rgba(255,255,255,0.08)",
-              },
+              fontWeight: 600,
+              opacity: 0.75,
+              fontSize: 13,
             }}
-            secondaryAction={
-              <motion.div whileTap={buttonTap}>
-                <Button
-                  size="small"
-                  onClick={() => handleAddBuddyToBird(buddy.id)}
+          >
+            — {selectedBird?.email}
+          </Typography>
+        </DialogTitle>
+
+
+        {/* ===== Content ===== */}
+        <DialogContent
+          dividers
+          sx={{
+            px: 3,
+            py: 2,
+            borderColor: "rgba(255,255,255,0.06)",
+          }}
+        >
+          {unassignedBuddies.length === 0 ? (
+            <Box sx={{ textAlign: "center", py: 4 }}>
+              <Typography sx={{ fontWeight: 700 }}>
+                No unassigned buddies available
+              </Typography>
+            </Box>
+          ) : (
+            <List dense>
+              {unassignedBuddies.map((buddy) => (
+                <ListItem
+                  key={buddy.id}
                   sx={{
-                    bgcolor: "rgba(155,140,255,0.15)",
-                    color: PALETTE.softYellow,
-                    fontWeight: 800,
-                    textTransform: "none",
-                    borderRadius: 999,
-                    px: 2,
-                    border: "1px solid rgba(155,140,255,0.35)",
-                    backdropFilter: "blur(6px)",
+                    mb: 1,
+                    borderRadius: 2,
+                    background: "rgba(255,255,255,0.04)",
+                    transition: "background 160ms ease",
                     "&:hover": {
-                      bgcolor: "rgba(155,140,255,0.25)",
+                      background: "rgba(255,255,255,0.08)",
                     },
                   }}
+                  secondaryAction={
+                    <motion.div whileTap={buttonTap}>
+                      <Button
+                        size="small"
+                        onClick={() => handleAddBuddyToBird(buddy.id)}
+                        sx={{
+                          bgcolor: "rgba(155,140,255,0.15)",
+                          color: PALETTE.softYellow,
+                          fontWeight: 800,
+                          textTransform: "none",
+                          borderRadius: 999,
+                          px: 2,
+                          border: "1px solid rgba(155,140,255,0.35)",
+                          backdropFilter: "blur(6px)",
+                          "&:hover": {
+                            bgcolor: "rgba(155,140,255,0.25)",
+                          },
+                        }}
+                      >
+                        Add
+                      </Button>
+                    </motion.div>
+                  }
                 >
-                  Add
-                </Button>
-              </motion.div>
-            }
-          >
-            <ListItemText
-              primary={buddy.email}
-              primaryTypographyProps={{
-                fontWeight: 700,
-              }}
-            />
-          </ListItem>
-        ))}
-      </List>
-    )}
-  </DialogContent>
+                  <ListItemText
+                    primary={buddy.email}
+                    primaryTypographyProps={{
+                      fontWeight: 700,
+                    }}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
 
-  {/* ===== Footer ===== */}
-  <DialogActions
-    sx={{
-      px: 3,
-      pb: 2,
-      pt: 1,
-      justifyContent: "flex-end",
-    }}
-  >
-    <Button
-      onClick={handleCloseAssignDialog}
-      sx={{
-        color: PALETTE.softYellow,
-        fontWeight: 700,
-        textTransform: "none",
-      }}
-    >
-      Close
-    </Button>
-  </DialogActions>
-</Dialog>
+        {/* ===== Footer ===== */}
+        <DialogActions
+          sx={{
+            px: 3,
+            pb: 2,
+            pt: 1,
+            justifyContent: "flex-end",
+          }}
+        >
+          <Button
+            onClick={handleCloseAssignDialog}
+            sx={{
+              color: PALETTE.softYellow,
+              fontWeight: 700,
+              textTransform: "none",
+            }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
 
 
       {/* Actions dialog */}
-      
-<Dialog
-  open={actionsDialogOpen}
-  onClose={handleCloseActionsDialog}
-  fullWidth
-  maxWidth="sm"
-  PaperProps={{
-    sx: {
-      borderRadius: 4,
-      background: "rgba(255,255,255,0.06)",
-      backdropFilter: "blur(16px) saturate(160%)",
-      border: "1px solid rgba(255,255,255,0.12)",
-      boxShadow: "0 30px 70px rgba(0,0,0,0.55)",
-      color: PALETTE.textDark,
-    },
-  }}
->
-  {/* ===== Header ===== */}
-  <DialogTitle
-    sx={{
-      fontWeight: 900,
-      fontSize: 18,
-      letterSpacing: 0.5,
-      color: PALETTE.softYellow,
-      display: "flex",
-      alignItems: "center",
-      gap: 1,
-      borderBottom: "1px solid rgba(255,255,255,0.08)",
-    }}
-  >
-    Manage Class
-    <Typography
-      component="span"
-      sx={{ fontWeight: 600, opacity: 0.75, fontSize: 13 }}
-    >
-      — {selectedBird?.email}
-    </Typography>
-  </DialogTitle>
 
-  {/* ===== Content ===== */}
-  <DialogContent
-    dividers
-    sx={{
-      px: 3,
-      py: 2,
-      borderColor: "rgba(255,255,255,0.06)",
-    }}
-  >
-    <Stack spacing={3}>
-      {/* Assigned Buddies (GLASS BOX) */}
-      <Box
-        sx={{
-          background: "rgba(255,255,255,0.05)",
-          backdropFilter: "blur(14px) saturate(160%)",
-          border: "1px solid rgba(255,255,255,0.12)",
-          borderRadius: 2,
-          p: 2,
+      <Dialog
+        open={actionsDialogOpen}
+        onClose={handleCloseActionsDialog}
+        fullWidth
+        maxWidth="sm"
+        PaperProps={{
+          sx: {
+            borderRadius: 4,
+            background: "rgba(255,255,255,0.06)",
+            backdropFilter: "blur(16px) saturate(160%)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            boxShadow: "0 30px 70px rgba(0,0,0,0.55)",
+            color: PALETTE.textDark,
+          },
         }}
       >
-        <Typography
+        {/* ===== Header ===== */}
+        <DialogTitle
           sx={{
             fontWeight: 900,
-            fontSize: 13,
+            fontSize: 18,
+            letterSpacing: 0.5,
             color: PALETTE.softYellow,
-            textTransform: "uppercase",
-            letterSpacing: 1,
-            mb: 1,
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
           }}
         >
-          Assigned Buddies
-        </Typography>
+          Manage Class
+          <Typography
+            component="span"
+            sx={{ fontWeight: 600, opacity: 0.75, fontSize: 13 }}
+          >
+            — {selectedBird?.email}
+          </Typography>
+        </DialogTitle>
 
-        {selectedBird?.buddies?.length > 0 ? (
-          <List dense>
-            {selectedBird.buddies.map((b) => (
-              <ListItem
-                key={b.id}
+        {/* ===== Content ===== */}
+        <DialogContent
+          dividers
+          sx={{
+            px: 3,
+            py: 2,
+            borderColor: "rgba(255,255,255,0.06)",
+          }}
+        >
+          <Stack spacing={3}>
+            {/* Assigned Buddies (GLASS BOX) */}
+            <Box
+              sx={{
+                background: "rgba(255,255,255,0.05)",
+                backdropFilter: "blur(14px) saturate(160%)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 2,
+                p: 2,
+              }}
+            >
+              <Typography
                 sx={{
-                  borderRadius: 1.5,
-                  background: "rgba(255,255,255,0.04)",
-                  mb: 0.5,
+                  fontWeight: 900,
+                  fontSize: 13,
+                  color: PALETTE.softYellow,
+                  textTransform: "uppercase",
+                  letterSpacing: 1,
+                  mb: 1,
                 }}
               >
-                <ListItemText
-                  primary={b.email}
-                  primaryTypographyProps={{ fontWeight: 700 }}
-                />
-              </ListItem>
-            ))}
-          </List>
-        ) : (
-          <Typography>No assigned buddies</Typography>
-        )}
+                Assigned Buddies
+              </Typography>
 
-        <Button
-          fullWidth
-          onClick={() => {
-            setRemoveDialogOpen(true);
-            setActionsDialogOpen(false);
-          }}
-          disabled={!selectedBird || selectedBird?.buddies?.length === 0}
-          sx={{
-            mt: 1,
-            bgcolor: "rgba(255,70,90,0.15)",
-            color: "#ff6e84",
-            fontWeight: 800,
-            textTransform: "none",
-            borderRadius: 2,
-            border: "1px solid rgba(255,70,90,0.35)",
-            "&:hover": {
-              bgcolor: "rgba(255,70,90,0.25)",
-            },
-          }}
-        >
-          Remove Buddy
-        </Button>
-      </Box>
+              {selectedBird?.buddies?.length > 0 ? (
+                <List dense>
+                  {selectedBird.buddies.map((b) => (
+                    <ListItem
+                      key={b.id}
+                      sx={{
+                        borderRadius: 1.5,
+                        background: "rgba(255,255,255,0.04)",
+                        mb: 0.5,
+                      }}
+                    >
+                      <ListItemText
+                        primary={b.email}
+                        primaryTypographyProps={{ fontWeight: 700 }}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              ) : (
+                <Typography>No assigned buddies</Typography>
+              )}
 
-      {/* Unassigned Buddies (GLASS BOX) */}
-      <Box
-        sx={{
-          background: "rgba(255,255,255,0.05)",
-          backdropFilter: "blur(14px) saturate(160%)",
-          border: "1px solid rgba(255,255,255,0.12)",
-          borderRadius: 2,
-          p: 2,
-        }}
-      >
-        <Typography
-          sx={{
-            fontWeight: 900,
-            fontSize: 13,
-            color: PALETTE.softYellow,
-            textTransform: "uppercase",
-            letterSpacing: 1,
-            mb: 1,
-          }}
-        >
-          Unassigned Buddies
-        </Typography>
-
-        {unassignedBuddies.length > 0 ? (
-          <List dense>
-            {unassignedBuddies.map((b) => (
-              <ListItem
-                key={b.id}
+              <Button
+                fullWidth
+                onClick={() => {
+                  setRemoveDialogOpen(true);
+                  setActionsDialogOpen(false);
+                }}
+                disabled={!selectedBird || selectedBird?.buddies?.length === 0}
                 sx={{
-                  borderRadius: 1.5,
-                  background: "rgba(255,255,255,0.04)",
-                  mb: 0.5,
+                  mt: 1,
+                  bgcolor: "rgba(255,70,90,0.15)",
+                  color: "#ff6e84",
+                  fontWeight: 800,
+                  textTransform: "none",
+                  borderRadius: 2,
+                  border: "1px solid rgba(255,70,90,0.35)",
+                  "&:hover": {
+                    bgcolor: "rgba(255,70,90,0.25)",
+                  },
                 }}
               >
-                <ListItemText
-                  primary={b.email}
-                  primaryTypographyProps={{ fontWeight: 700 }}
-                />
-              </ListItem>
-            ))}
-          </List>
-        ) : (
-          <Typography>All buddies are assigned</Typography>
-        )}
+                Remove Buddy
+              </Button>
+            </Box>
 
-        <Button
-          fullWidth
-          onClick={() => {
-            setAssignDialogOpen(true);
-            setActionsDialogOpen(false);
-          }}
-          disabled={
-            !selectedBird ||
-            selectedBird?.buddies?.length >= 5 ||
-            unassignedBuddies.length === 0
-          }
+            {/* Unassigned Buddies (GLASS BOX) */}
+            <Box
+              sx={{
+                background: "rgba(255,255,255,0.05)",
+                backdropFilter: "blur(14px) saturate(160%)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 2,
+                p: 2,
+              }}
+            >
+              <Typography
+                sx={{
+                  fontWeight: 900,
+                  fontSize: 13,
+                  color: PALETTE.softYellow,
+                  textTransform: "uppercase",
+                  letterSpacing: 1,
+                  mb: 1,
+                }}
+              >
+                Unassigned Buddies
+              </Typography>
+
+              {unassignedBuddies.length > 0 ? (
+                <List dense>
+                  {unassignedBuddies.map((b) => (
+                    <ListItem
+                      key={b.id}
+                      sx={{
+                        borderRadius: 1.5,
+                        background: "rgba(255,255,255,0.04)",
+                        mb: 0.5,
+                      }}
+                    >
+                      <ListItemText
+                        primary={b.email}
+                        primaryTypographyProps={{ fontWeight: 700 }}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              ) : (
+                <Typography>All buddies are assigned</Typography>
+              )}
+
+              <Button
+                fullWidth
+                onClick={() => {
+                  setAssignDialogOpen(true);
+                  setActionsDialogOpen(false);
+                }}
+                disabled={
+                  !selectedBird ||
+                  selectedBird?.buddies?.length >= 5 ||
+                  unassignedBuddies.length === 0
+                }
+                sx={{
+                  mt: 1,
+                  bgcolor: "rgba(155,140,255,0.15)",
+                  color: PALETTE.softYellow,
+                  fontWeight: 800,
+                  textTransform: "none",
+                  borderRadius: 2,
+                  border: "1px solid rgba(155,140,255,0.35)",
+                  "&:hover": {
+                    bgcolor: "rgba(155,140,255,0.25)",
+                  },
+                }}
+              >
+                Add Buddy
+              </Button>
+            </Box>
+          </Stack>
+        </DialogContent>
+
+        {/* ===== Footer ===== */}
+        <DialogActions
           sx={{
-            mt: 1,
-            bgcolor: "rgba(155,140,255,0.15)",
-            color: PALETTE.softYellow,
-            fontWeight: 800,
-            textTransform: "none",
-            borderRadius: 2,
-            border: "1px solid rgba(155,140,255,0.35)",
-            "&:hover": {
-              bgcolor: "rgba(155,140,255,0.25)",
-            },
+            px: 3,
+            pb: 2,
+            pt: 1,
+            justifyContent: "flex-end",
           }}
         >
-          Add Buddy
-        </Button>
-      </Box>
-    </Stack>
-  </DialogContent>
-
-  {/* ===== Footer ===== */}
-  <DialogActions
-    sx={{
-      px: 3,
-      pb: 2,
-      pt: 1,
-      justifyContent: "flex-end",
-    }}
-  >
-    <Button
-      onClick={handleCloseActionsDialog}
-      sx={{
-        color: PALETTE.softYellow,
-        fontWeight: 700,
-        textTransform: "none",
-      }}
-    >
-      Close
-    </Button>
-  </DialogActions>
-</Dialog>
+          <Button
+            onClick={handleCloseActionsDialog}
+            sx={{
+              color: PALETTE.softYellow,
+              fontWeight: 700,
+              textTransform: "none",
+            }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
 
       {/* Remove Buddy Dialog */}
       <Dialog
-  open={removeDialogOpen}
-  onClose={handleCloseRemoveDialog}
-  fullWidth
-  maxWidth="sm"
-  PaperProps={{
-    sx: {
-      borderRadius: 4,
-      background: "rgba(255,255,255,0.06)",
-      backdropFilter: "blur(16px) saturate(160%)",
-      border: "1px solid rgba(255,255,255,0.12)",
-      boxShadow: "0 30px 70px rgba(0,0,0,0.55)",
-      color: PALETTE.textDark,
-    },
-  }}
->
-  {/* ===== Header ===== */}
-  <DialogTitle
-    sx={{
-      fontWeight: 900,
-      fontSize: 18,
-      letterSpacing: 0.5,
-      color: PALETTE.softYellow,
-      display: "flex",
-      alignItems: "center",
-      gap: 1,
-      borderBottom: "1px solid rgba(255,255,255,0.08)",
-    }}
-  >
-    Remove Buddy
-    <Typography
-      component="span"
-      sx={{
-        fontWeight: 600,
-        opacity: 0.75,
-        fontSize: 13,
-      }}
-    >
-      — {selectedBird?.email}
-    </Typography>
-  </DialogTitle>
-
-  {/* ===== Content ===== */}
-  <DialogContent
-    dividers
-    sx={{
-      px: 3,
-      py: 2,
-      borderColor: "rgba(255,255,255,0.06)",
-    }}
-  >
-    {selectedBird && selectedBird.buddies.length > 0 ? (
-      <List dense>
-        {selectedBird.buddies.map((b) => (
-          <ListItem
-            key={b.id}
+        open={removeDialogOpen}
+        onClose={handleCloseRemoveDialog}
+        fullWidth
+        maxWidth="sm"
+        PaperProps={{
+          sx: {
+            borderRadius: 4,
+            background: "rgba(255,255,255,0.06)",
+            backdropFilter: "blur(16px) saturate(160%)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            boxShadow: "0 30px 70px rgba(0,0,0,0.55)",
+            color: PALETTE.textDark,
+          },
+        }}
+      >
+        {/* ===== Header ===== */}
+        <DialogTitle
+          sx={{
+            fontWeight: 900,
+            fontSize: 18,
+            letterSpacing: 0.5,
+            color: PALETTE.softYellow,
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          Remove Buddy
+          <Typography
+            component="span"
             sx={{
-              mb: 1,
-              borderRadius: 2,
-              background: "rgba(255,255,255,0.04)",
-              transition: "background 160ms ease",
-              "&:hover": {
-                background: "rgba(255,255,255,0.08)",
-              },
+              fontWeight: 600,
+              opacity: 0.75,
+              fontSize: 13,
             }}
-            secondaryAction={
-              <motion.div whileTap={buttonTap}>
-                <Button
-                  size="small"
-                  onClick={async () => {
-                    await handleRemoveBuddyFromBird(
-                      selectedBird.id,
-                      b.id
-                    );
-                    handleCloseRemoveDialog();
-                  }}
+          >
+            — {selectedBird?.email}
+          </Typography>
+        </DialogTitle>
+
+        {/* ===== Content ===== */}
+        <DialogContent
+          dividers
+          sx={{
+            px: 3,
+            py: 2,
+            borderColor: "rgba(255,255,255,0.06)",
+          }}
+        >
+          {selectedBird && selectedBird.buddies.length > 0 ? (
+            <List dense>
+              {selectedBird.buddies.map((b) => (
+                <ListItem
+                  key={b.id}
                   sx={{
-                    bgcolor: "rgba(255,70,90,0.15)",
-                    color: "#ff6e84ff",
-                    fontWeight: 800,
-                    textTransform: "none",
-                    borderRadius: 999,
-                    px: 2,
-                    border: "1px solid rgba(141, 0, 14, 0.35)",
-                    backdropFilter: "blur(6px)",
+                    mb: 1,
+                    borderRadius: 2,
+                    background: "rgba(255,255,255,0.04)",
+                    transition: "background 160ms ease",
                     "&:hover": {
-                      bgcolor: "rgba(255, 0, 25, 0.25)",
+                      background: "rgba(255,255,255,0.08)",
                     },
                   }}
+                  secondaryAction={
+                    <motion.div whileTap={buttonTap}>
+                      <Button
+                        size="small"
+                        onClick={async () => {
+                          await handleRemoveBuddyFromBird(
+                            selectedBird.id,
+                            b.id
+                          );
+                          handleCloseRemoveDialog();
+                        }}
+                        sx={{
+                          bgcolor: "rgba(255,70,90,0.15)",
+                          color: "#ff6e84ff",
+                          fontWeight: 800,
+                          textTransform: "none",
+                          borderRadius: 999,
+                          px: 2,
+                          border: "1px solid rgba(141, 0, 14, 0.35)",
+                          backdropFilter: "blur(6px)",
+                          "&:hover": {
+                            bgcolor: "rgba(255, 0, 25, 0.25)",
+                          },
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    </motion.div>
+                  }
                 >
-                  Remove
-                </Button>
-              </motion.div>
-            }
-          >
-            <ListItemText
-              primary={b.email}
-              primaryTypographyProps={{
-                fontWeight: 700,
-              }}
-            />
-          </ListItem>
-        ))}
-      </List>
-    ) : (
-      <Box sx={{ textAlign: "center", py: 4 }}>
-        <Typography sx={{ fontWeight: 700 }}>
-          No assigned buddies
-        </Typography>
-      </Box>
-    )}
-  </DialogContent>
+                  <ListItemText
+                    primary={b.email}
+                    primaryTypographyProps={{
+                      fontWeight: 700,
+                    }}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          ) : (
+            <Box sx={{ textAlign: "center", py: 4 }}>
+              <Typography sx={{ fontWeight: 700 }}>
+                No assigned buddies
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
 
-  {/* ===== Footer ===== */}
-  <DialogActions
-    sx={{
-      px: 3,
-      pb: 2,
-      pt: 1,
-      justifyContent: "flex-end",
-    }}
-  >
-    <Button
-      onClick={handleCloseRemoveDialog}
-      sx={{
-        color: PALETTE.softYellow,
-        fontWeight: 700,
-        textTransform: "none",
-      }}
-    >
-      Close
-    </Button>
-  </DialogActions>
-</Dialog>
+        {/* ===== Footer ===== */}
+        <DialogActions
+          sx={{
+            px: 3,
+            pb: 2,
+            pt: 1,
+            justifyContent: "flex-end",
+          }}
+        >
+          <Button
+            onClick={handleCloseRemoveDialog}
+            sx={{
+              color: PALETTE.softYellow,
+              fontWeight: 700,
+              textTransform: "none",
+            }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
 
 
@@ -1727,204 +1760,372 @@ await sendNotification(
 
       {/* Edit Pair Dialog */}
       {/* Edit Pair Dialog – GLASS UI */}
-<Dialog
-  open={editDialogOpen}
-  onClose={() => setEditDialogOpen(false)}
-  fullWidth
-  maxWidth="sm"
-  PaperProps={{
-    sx: {
-      borderRadius: 4,
-      background: "rgba(255,255,255,0.06)",
-      backdropFilter: "blur(16px) saturate(160%)",
-      border: "1px solid rgba(255,255,255,0.12)",
-      boxShadow: "0 30px 70px rgba(0,0,0,0.55)",
-      color: PALETTE.textDark,
-    },
-  }}
->
-  {/* ===== Header ===== */}
-  <DialogTitle
-    sx={{
-      fontWeight: 900,
-      fontSize: 18,
-      letterSpacing: 0.5,
-      color: PALETTE.softYellow,
-      display: "flex",
-      alignItems: "center",
-      gap: 1,
-      borderBottom: "1px solid rgba(255,255,255,0.08)",
-    }}
-  >
-    Edit Pair
-  </DialogTitle>
-
-  {/* ===== Content ===== */}
-  <DialogContent
-    dividers
-    sx={{
-      px: 3,
-      py: 3,
-      borderColor: "rgba(255,255,255,0.06)",
-    }}
-  >
-    <Stack spacing={3}>
-      {/* Bird Selector */}
-      <Box
-        sx={{
-          background: "rgba(255,255,255,0.05)",
-          backdropFilter: "blur(14px) saturate(160%)",
-          border: "1px solid rgba(255,255,255,0.12)",
-          borderRadius: 2,
-          p: 2,
-        }}
-      >
-        <Typography
-          sx={{
-            fontWeight: 900,
-            fontSize: 13,
-            color: PALETTE.softYellow,
-            textTransform: "uppercase",
-            letterSpacing: 1,
-            mb: 1,
-          }}
-        >
-          Bird
-        </Typography>
-
-        <FormControl fullWidth>
-          <Select
-            value={editBird}
-            onChange={(e) => setEditBird(e.target.value)}
-            sx={{
-              bgcolor: "rgba(255,255,255,0.04)",
-              borderRadius: 2,
-              color: PALETTE.textDark,
-            }}
-          >
-            {birds.map((b) => (
-              <MenuItem key={b.id} value={b.id}>
-                {b.email}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      </Box>
-
-      {/* Buddy Selector */}
-      <Box
-        sx={{
-          background: "rgba(255,255,255,0.05)",
-          backdropFilter: "blur(14px) saturate(160%)",
-          border: "1px solid rgba(255,255,255,0.12)",
-          borderRadius: 2,
-          p: 2,
-        }}
-      >
-        <Typography
-          sx={{
-            fontWeight: 900,
-            fontSize: 13,
-            color: PALETTE.softYellow,
-            textTransform: "uppercase",
-            letterSpacing: 1,
-            mb: 1,
-          }}
-        >
-          Buddy
-        </Typography>
-
-        <FormControl fullWidth>
-          <Select
-            value={editBuddy}
-            onChange={(e) => setEditBuddy(e.target.value)}
-            sx={{
-              bgcolor: "rgba(255,255,255,0.04)",
-              borderRadius: 2,
-              color: PALETTE.textDark,
-            }}
-          >
-            {buddies.map((b) => (
-              <MenuItem key={b.id} value={b.id}>
-                {b.email}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      </Box>
-    </Stack>
-  </DialogContent>
-
-  {/* ===== Footer ===== */}
-  <DialogActions
-    sx={{
-      px: 3,
-      pb: 2,
-      pt: 1,
-      justifyContent: "flex-end",
-    }}
-  >
-    <Button
-      onClick={() => setEditDialogOpen(false)}
-      sx={{
-        color: PALETTE.softYellow,
-        fontWeight: 700,
-        textTransform: "none",
-      }}
-    >
-      Cancel
-    </Button>
-
-    <motion.div whileTap={buttonTap}>
-      <Button
-        onClick={handleSaveEdit}
-        sx={{
-          ml: 1,
-          bgcolor: "rgba(155,140,255,0.15)",
-          color: PALETTE.softYellow,
-          fontWeight: 800,
-          textTransform: "none",
-          borderRadius: 2,
-          border: "1px solid rgba(155,140,255,0.35)",
-          "&:hover": {
-            bgcolor: "rgba(155,140,255,0.25)",
+      <Dialog
+        open={editDialogOpen}
+        onClose={() => setEditDialogOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        PaperProps={{
+          sx: {
+            borderRadius: 4,
+            background: "rgba(255,255,255,0.06)",
+            backdropFilter: "blur(16px) saturate(160%)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            boxShadow: "0 30px 70px rgba(0,0,0,0.55)",
+            color: PALETTE.textDark,
           },
         }}
       >
-        Save Changes
-      </Button>
-    </motion.div>
-  </DialogActions>
-</Dialog>
-<Dialog open={notifOpen} onClose={() => setNotifOpen(false)} fullWidth maxWidth="sm">
-  <DialogTitle>Notifications</DialogTitle>
+        {/* ===== Header ===== */}
+        <DialogTitle
+          sx={{
+            fontWeight: 900,
+            fontSize: 18,
+            letterSpacing: 0.5,
+            color: PALETTE.softYellow,
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          Edit Pair
+        </DialogTitle>
 
-  <DialogContent>
-    {notifications.length === 0 ? (
-      <Typography>No notifications</Typography>
-    ) : (
-      notifications.map((n) => (
-        <Box key={n.id} sx={{ mb: 2 }}>
-          <Typography fontWeight={700}>
-            {n.fromName}
-          </Typography>
+        {/* ===== Content ===== */}
+        <DialogContent
+          dividers
+          sx={{
+            px: 3,
+            py: 3,
+            borderColor: "rgba(255,255,255,0.06)",
+          }}
+        >
+          <Stack spacing={3}>
+            {/* Bird Selector */}
+            <Box
+              sx={{
+                background: "rgba(255,255,255,0.05)",
+                backdropFilter: "blur(14px) saturate(160%)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 2,
+                p: 2,
+              }}
+            >
+              <Typography
+                sx={{
+                  fontWeight: 900,
+                  fontSize: 13,
+                  color: PALETTE.softYellow,
+                  textTransform: "uppercase",
+                  letterSpacing: 1,
+                  mb: 1,
+                }}
+              >
+                Bird
+              </Typography>
 
-          <Typography variant="body2">
-            {n.type === "chat" && "sent you a message"}
-            {n.type === "pair" && "Pair update"}
-            {n.type === "report" && "Submitted a report"}
-          </Typography>
+              <FormControl fullWidth>
+                <Select
+                  value={editBird}
+                  onChange={(e) => setEditBird(e.target.value)}
+                  sx={{
+                    bgcolor: "rgba(255,255,255,0.04)",
+                    borderRadius: 2,
+                    color: PALETTE.textDark,
+                  }}
+                >
+                  {birds.map((b) => (
+                    <MenuItem key={b.id} value={b.id}>
+                      {b.email}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
 
-          <Divider sx={{ mt: 1 }} />
-        </Box>
-      ))
-    )}
-  </DialogContent>
+            {/* Buddy Selector */}
+            <Box
+              sx={{
+                background: "rgba(255,255,255,0.05)",
+                backdropFilter: "blur(14px) saturate(160%)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 2,
+                p: 2,
+              }}
+            >
+              <Typography
+                sx={{
+                  fontWeight: 900,
+                  fontSize: 13,
+                  color: PALETTE.softYellow,
+                  textTransform: "uppercase",
+                  letterSpacing: 1,
+                  mb: 1,
+                }}
+              >
+                Buddy
+              </Typography>
 
-  <DialogActions>
-    <Button onClick={() => setNotifOpen(false)}>Close</Button>
-  </DialogActions>
-</Dialog>
+              <FormControl fullWidth>
+                <Select
+                  value={editBuddy}
+                  onChange={(e) => setEditBuddy(e.target.value)}
+                  sx={{
+                    bgcolor: "rgba(255,255,255,0.04)",
+                    borderRadius: 2,
+                    color: PALETTE.textDark,
+                  }}
+                >
+                  {buddies.map((b) => (
+                    <MenuItem key={b.id} value={b.id}>
+                      {b.email}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+          </Stack>
+        </DialogContent>
+
+        {/* ===== Footer ===== */}
+        <DialogActions
+          sx={{
+            px: 3,
+            pb: 2,
+            pt: 1,
+            justifyContent: "flex-end",
+          }}
+        >
+          <Button
+            onClick={() => setEditDialogOpen(false)}
+            sx={{
+              color: PALETTE.softYellow,
+              fontWeight: 700,
+              textTransform: "none",
+            }}
+          >
+            Cancel
+          </Button>
+
+          <motion.div whileTap={buttonTap}>
+            <Button
+              onClick={handleSaveEdit}
+              sx={{
+                ml: 1,
+                bgcolor: "rgba(155,140,255,0.15)",
+                color: PALETTE.softYellow,
+                fontWeight: 800,
+                textTransform: "none",
+                borderRadius: 2,
+                border: "1px solid rgba(155,140,255,0.35)",
+                "&:hover": {
+                  bgcolor: "rgba(155,140,255,0.25)",
+                },
+              }}
+            >
+              Save Changes
+            </Button>
+          </motion.div>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={notifOpen} onClose={() => setNotifOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Notifications</DialogTitle>
+
+        <DialogContent>
+          {notifications.length === 0 ? (
+            <Typography>No notifications</Typography>
+          ) : (
+            notifications.map((n) => (
+              <Box key={n.id} sx={{ mb: 2 }}>
+                <Typography fontWeight={700}>
+                  {n.fromName}
+                </Typography>
+
+                <Typography variant="body2">
+                  {n.type === "chat" && "sent you a message"}
+                  {n.type === "pair" && "Pair update"}
+                  {n.type === "report" && "Submitted a report"}
+                </Typography>
+
+                <Divider sx={{ mt: 1 }} />
+              </Box>
+            ))
+          )}
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={() => setNotifOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Report Details Dialog */}
+      <Dialog
+        open={reportDetailsOpen}
+        onClose={() => setReportDetailsOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            background: "#1a2035",
+            color: "white",
+            borderRadius: 2
+          }
+        }}
+      >
+        <DialogTitle sx={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+          Report Details
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          {selectedReport && (
+            <Stack spacing={2}>
+              <Box>
+                <Typography variant="caption" sx={{ color: "gray" }}>REPORT ID</Typography>
+                <Typography>{selectedReport.id}</Typography>
+              </Box>
+              <Stack direction="row" spacing={3}>
+                <Box>
+                  <Typography variant="caption" sx={{ color: "gray" }}>REPORTER</Typography>
+                  <Typography fontWeight="bold">{selectedReport.reporterEmail}</Typography>
+                  <Chip label={selectedReport.reporterRole} size="small" sx={{ mt: 0.5, bgcolor: "rgba(255,255,255,0.1)", color: "white" }} />
+                </Box>
+                <Box>
+                  <Typography variant="caption" sx={{ color: "gray" }}>REPORTED USER</Typography>
+                  <Typography fontWeight="bold">
+                    {allUsersMap[selectedReport.reportedUserId]?.name || selectedReport.reportedUserEmail || selectedReport.reportedUserId}
+                  </Typography>
+                  <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                    {selectedReport.reportedUserEmail || selectedReport.reportedUserId}
+                  </Typography>
+                </Box>
+              </Stack>
+              <Box>
+                <Typography variant="caption" sx={{ color: "gray" }}>REASON</Typography>
+                <Typography sx={{ p: 2, bgcolor: "rgba(255,0,0,0.1)", borderRadius: 1, border: "1px solid rgba(255,0,0,0.2)" }}>
+                  {selectedReport.reason}
+                </Typography>
+              </Box>
+
+              {selectedReport.chatHistory && selectedReport.chatHistory.length > 0 && (
+                <Box>
+                  <Typography variant="caption" sx={{ color: "gray" }}>CHAT EVIDENCE (LAST 20 MESSAGES)</Typography>
+                  <Stack
+                    spacing={1}
+                    sx={{
+                      maxHeight: 250,
+                      overflowY: "auto",
+                      p: 1.5,
+                      bgcolor: "rgba(0,0,0,0.2)",
+                      borderRadius: 1,
+                      border: "1px solid rgba(255,255,255,0.05)",
+                      "&::-webkit-scrollbar": { width: "6px" },
+                      "&::-webkit-scrollbar-thumb": { backgroundColor: "rgba(255,255,255,0.2)", borderRadius: "3px" },
+                    }}
+                  >
+                    {selectedReport.chatHistory.map((msg, idx) => {
+                      // Highlight the reported user's messages slightly
+                      const isReportedUser = msg.senderEmail === (selectedReport.reportedUserEmail || allUsersMap[selectedReport.reportedUserId]?.email);
+
+                      return (
+                        <Box
+                          key={idx}
+                          sx={{
+                            p: 1,
+                            borderRadius: 1,
+                            bgcolor: isReportedUser ? "rgba(255,70,90,0.15)" : "rgba(255,255,255,0.05)",
+                            borderLeft: isReportedUser ? "3px solid #ff6e84" : "3px solid transparent",
+                          }}
+                        >
+                          <Stack direction="row" justifyContent="space-between" alignItems="center" mb={0.5}>
+                            <Typography variant="caption" fontWeight="bold" sx={{ color: isReportedUser ? "#ff6e84" : "#e0e0e0" }}>
+                              {msg.senderEmail}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: "gray", fontSize: "0.7rem" }}>
+                              {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ""}
+                            </Typography>
+                          </Stack>
+                          <Typography variant="body2" sx={{ wordBreak: "break-word" }}>
+                            {msg.text}
+                          </Typography>
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+                </Box>
+              )}
+
+              <Box>
+                <Typography variant="caption" sx={{ color: "gray" }}>TIMESTAMP</Typography>
+                <Typography>{selectedReport.createdAt?.toDate().toLocaleString()}</Typography>
+              </Box>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2, borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+          <Button onClick={() => setReportDetailsOpen(false)} sx={{ color: "gray" }}>Close</Button>
+          {selectedReport && selectedReport.status === "pending" && (
+            <Button
+              variant="contained"
+              onClick={async () => {
+                await updateDoc(doc(db, "reports", selectedReport.id), { status: "resolved" });
+                fetchData();
+                setReportDetailsOpen(false);
+              }}
+              color="success"
+            >
+              Mark Resolved
+            </Button>
+          )}
+          {selectedReport && (() => {
+            const isSuspended = allUsersMap[selectedReport.reportedUserId]?.isSuspended;
+            return (
+              <Button
+                variant="contained"
+                color="error"
+                disabled={!!isSuspended}
+                sx={{
+                  "&.Mui-disabled": {
+                    background: "rgba(255, 255, 255, 0.12)",
+                    color: "rgba(255, 255, 255, 0.5)",
+                    border: "1px solid rgba(255, 255, 255, 0.2)"
+                  }
+                }}
+                onClick={async () => {
+                  const targetUid = selectedReport.reportedUserId;
+                  const targetEmail = selectedReport.reportedUserEmail || "Unknown";
+
+                  if (window.confirm(`Are you sure you want to SUSPEND user ${targetEmail}?`)) {
+                    try {
+                      // 1. Suspension
+                      await updateDoc(doc(db, "users", targetUid), { isSuspended: true });
+
+                      // 2. Resolve the report automatically
+                      await updateDoc(doc(db, "reports", selectedReport.id), { status: "resolved" });
+
+                      // 3. Log it
+                      await logActivity(
+                        "User Suspended",
+                        `Target: ${targetEmail} (${targetUid})`,
+                        auth.currentUser.uid,
+                        "Admin"
+                      );
+
+                      alert(`User ${targetEmail} has been suspended.`);
+                      setReportDetailsOpen(false);
+                      fetchData();
+                    } catch (err) {
+                      console.error("Error suspending user:", err);
+                      alert("Failed to suspend user.");
+                    }
+                  }
+                }}
+              >
+                {isSuspended ? "Already Suspended" : "Suspend User"}
+              </Button>
+            );
+          })()}
+        </DialogActions>
+      </Dialog>
 
     </Box>
   );

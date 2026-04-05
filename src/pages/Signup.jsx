@@ -10,10 +10,11 @@ import {
   ToggleButtonGroup,
   MenuItem,
 } from "@mui/material";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { setDoc, doc } from "firebase/firestore";
+import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { setDoc, doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import { useNavigate, Link } from "react-router-dom";
+import { PALETTE } from "../constants/theme";
 
 export default function Signup() {
   const [name, setName] = useState("");
@@ -31,6 +32,12 @@ export default function Signup() {
     // 🔐 Validation based on role
     if (!name || !email || !password) {
       setError("Please fill all required fields");
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError("Please enter a valid email address");
       return;
     }
 
@@ -67,40 +74,112 @@ export default function Signup() {
     }
   };
 
+  const handleGoogleSignup = async () => {
+    if (role === "buddy" && (!course || !year)) {
+      setError("Please fill course and year before signing up with Google");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const provider = new GoogleAuthProvider();
+      const cred = await signInWithPopup(auth, provider);
+      const user = cred.user;
+
+      const docRef = doc(db, "users", user.uid);
+      const docSnap = await getDoc(docRef);
+
+      if (!docSnap.exists()) {
+        const userData = {
+          name: user.displayName || name || "User",
+          email: user.email,
+          role,
+          createdAt: new Date(),
+        };
+
+        if (role === "buddy") {
+          userData.course = course;
+          userData.year = year;
+        }
+
+        await setDoc(docRef, userData);
+      }
+
+      // After a successful signup and db creation, we can redirect directly to the dashboard
+      // because the user is now authenticated and their role is in the DB.
+      if (role === "superbird") navigate("/admin");
+      else if (role === "bird") navigate("/bird-dashboard");
+      else navigate("/buddy-dashboard");
+    } catch (err) {
+      console.error("Google Signup Error:", err);
+      setError("Google sign-up failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ... inside Signup component return ...
   return (
     <Box
       sx={{
         minHeight: "100vh",
-        background: "linear-gradient(180deg, #0b1220 0%, #0f1724 100%)",
+        background: `radial-gradient(circle at top right, #38276f 0%, #063149 40%, #0f1724 100%)`, // Purple-tinted variant of the login bg
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         px: 2,
+        position: "relative",
+        overflow: "hidden",
       }}
     >
+      {/* Animated glowing orbs */}
+      <Box sx={{
+        position: "absolute", top: "-10%", left: "-10%", width: "40vw", height: "40vw",
+        background: "radial-gradient(circle, rgba(94,209,198,0.1) 0%, rgba(0,0,0,0) 70%)",
+        animation: "pulse 8s infinite alternate",
+        zIndex: 0,
+      }} />
+      <Box sx={{
+        position: "absolute", bottom: "-20%", right: "-10%", width: "50vw", height: "50vw",
+        background: "radial-gradient(circle, rgba(155,140,255,0.15) 0%, rgba(0,0,0,0) 70%)",
+        animation: "pulse 10s infinite alternate-reverse",
+        zIndex: 0,
+      }} />
+      <style>
+        {`@keyframes pulse { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(1.1); opacity: 1; } }`}
+      </style>
       <Paper
         elevation={0}
         sx={{
           width: "100%",
-          maxWidth: 460,
-          p: 4,
-          borderRadius: 3,
-          background: "rgba(255,255,255,0.06)",
-          backdropFilter: "blur(14px)",
-          border: "1px solid rgba(255,255,255,0.08)",
-          boxShadow: "0 20px 50px rgba(0,0,0,0.6)",
+          maxWidth: 480, // slightly wider for split fields later
+          p: { xs: 3, md: 5 },
+          borderRadius: 4,
+          background: "linear-gradient(145deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%)",
+          backdropFilter: "blur(24px) saturate(180%)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          boxShadow: "0 30px 60px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.2)",
+          position: "relative",
+          zIndex: 1,
         }}
       >
         <Typography
           variant="h4"
-          sx={{ fontWeight: 900, color: "#E6EEF2", textAlign: "center", mb: 1 }}
+          sx={{
+            fontWeight: 900,
+            color: "#FFFFFF",
+            textAlign: "center",
+            mb: 1,
+            letterSpacing: "-0.5px",
+            textShadow: "0 2px 10px rgba(0,0,0,0.3)"
+          }}
         >
           Create Account ✨
         </Typography>
 
         <Typography
           sx={{
-            color: "rgba(255,255,255,0.6)",
+            color: "rgba(255,255,255,0.7)",
             textAlign: "center",
             mb: 3,
           }}
@@ -127,8 +206,8 @@ export default function Signup() {
                 role === "superbird"
                   ? "#EC4899"
                   : role === "bird"
-                  ? "#4FB3A6"
-                  : "#F5C56B",
+                    ? "#4FB3A6"
+                    : "#F5C56B",
             },
           }}
         >
@@ -145,9 +224,13 @@ export default function Signup() {
           onChange={(e) => setName(e.target.value)}
           sx={{
             mb: 2,
-            input: { color: "#E6EEF2" },
-            label: { color: "rgba(255,255,255,0.6)" },
-            fieldset: { borderColor: "rgba(255,255,255,0.15)" },
+            input: { color: "#FFFFFF" },
+            label: { color: "rgba(255,255,255,0.7)" },
+            fieldset: { borderColor: "rgba(255,255,255,0.3)" },
+            "& .MuiOutlinedInput-root": {
+              "&:hover fieldset": { borderColor: "rgba(255,255,255,0.5)" },
+              "&.Mui-focused fieldset": { borderColor: "#4FB3A6" },
+            },
           }}
         />
 
@@ -161,9 +244,13 @@ export default function Signup() {
               onChange={(e) => setCourse(e.target.value)}
               sx={{
                 mb: 2,
-                input: { color: "#E6EEF2" },
-                label: { color: "rgba(255,255,255,0.6)" },
-                fieldset: { borderColor: "rgba(255,255,255,0.15)" },
+                input: { color: "#FFFFFF" },
+                label: { color: "rgba(255,255,255,0.7)" },
+                fieldset: { borderColor: "rgba(255,255,255,0.3)" },
+                "& .MuiOutlinedInput-root": {
+                  "&:hover fieldset": { borderColor: "rgba(255,255,255,0.5)" },
+                  "&.Mui-focused fieldset": { borderColor: "#4FB3A6" },
+                },
               }}
             />
 
@@ -189,14 +276,16 @@ export default function Signup() {
                 mb: 2,
                 "& .MuiInputBase-input": { color: "#fff" },
                 "& .MuiInputLabel-root": {
-                  color: "rgba(255,255,255,0.6)",
+                  color: "rgba(255,255,255,0.7)",
                 },
                 "& .MuiOutlinedInput-root": {
                   background: "rgba(255,255,255,0.06)",
                   backdropFilter: "blur(12px)",
                   "& fieldset": {
-                    borderColor: "rgba(255,255,255,0.15)",
+                    borderColor: "rgba(255,255,255,0.3)",
                   },
+                  "&:hover fieldset": { borderColor: "rgba(255,255,255,0.5)" },
+                  "&.Mui-focused fieldset": { borderColor: "#4FB3A6" },
                 },
               }}
             >
@@ -215,9 +304,13 @@ export default function Signup() {
           onChange={(e) => setEmail(e.target.value)}
           sx={{
             mb: 2,
-            input: { color: "#E6EEF2" },
-            label: { color: "rgba(255,255,255,0.6)" },
-            fieldset: { borderColor: "rgba(255,255,255,0.15)" },
+            input: { color: "#FFFFFF" },
+            label: { color: "rgba(255,255,255,0.7)" },
+            fieldset: { borderColor: "rgba(255,255,255,0.3)" },
+            "& .MuiOutlinedInput-root": {
+              "&:hover fieldset": { borderColor: "rgba(255,255,255,0.5)" },
+              "&.Mui-focused fieldset": { borderColor: "#4FB3A6" },
+            },
           }}
         />
 
@@ -230,9 +323,13 @@ export default function Signup() {
           onChange={(e) => setPassword(e.target.value)}
           sx={{
             mb: 2,
-            input: { color: "#E6EEF2" },
-            label: { color: "rgba(255,255,255,0.6)" },
-            fieldset: { borderColor: "rgba(255,255,255,0.15)" },
+            input: { color: "#FFFFFF" },
+            label: { color: "rgba(255,255,255,0.7)" },
+            fieldset: { borderColor: "rgba(255,255,255,0.3)" },
+            "& .MuiOutlinedInput-root": {
+              "&:hover fieldset": { borderColor: "rgba(255,255,255,0.5)" },
+              "&.Mui-focused fieldset": { borderColor: "#4FB3A6" },
+            },
           }}
         />
 
@@ -247,20 +344,59 @@ export default function Signup() {
           onClick={handleSignup}
           disabled={loading}
           sx={{
-            py: 1.4,
+            py: 1.6,
+            mt: 1,
             fontWeight: 800,
-            borderRadius: 2,
+            borderRadius: 3,
             fontSize: "1rem",
+            textTransform: "none",
+            letterSpacing: "0.5px",
             background:
               role === "superbird"
-                ? "linear-gradient(135deg, #EC4899, #7B61FF)"
+                ? "linear-gradient(135deg, #EC4899 0%, #7B61FF 100%)"
                 : role === "bird"
-                ? "linear-gradient(135deg, #4FB3A6, #7B61FF)"
-                : "linear-gradient(135deg, #F5C56B, #7B61FF)",
+                  ? "linear-gradient(135deg, #4FB3A6 0%, #7B61FF 100%)"
+                  : "linear-gradient(135deg, #F5C56B 0%, #7B61FF 100%)",
             color: "#fff",
+            boxShadow: "0 8px 20px rgba(123, 97, 255, 0.3)",
+            transition: "all 0.3s ease",
+            "&:hover": {
+              transform: "translateY(-2px)",
+              boxShadow: "0 12px 25px rgba(123, 97, 255, 0.4)",
+              filter: "brightness(1.1)",
+            },
           }}
         >
-          {loading ? <CircularProgress size={24} /> : "Create Account"}
+          {loading ? <CircularProgress size={24} color="inherit" /> : "Sign Up"}
+        </Button>
+
+        <Button
+          fullWidth
+          onClick={handleGoogleSignup}
+          disabled={loading}
+          sx={{
+            py: 1.6,
+            mt: 2,
+            fontWeight: 700,
+            borderRadius: 3,
+            fontSize: "1rem",
+            textTransform: "none",
+            background: "rgba(255,255,255,0.05)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            color: "#FFFFFF",
+            transition: "all 0.3s ease",
+            "&:hover": {
+              background: "rgba(255,255,255,0.1)",
+              transform: "translateY(-2px)",
+            },
+          }}
+        >
+          <img
+            src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg"
+            alt="Google"
+            style={{ width: 22, height: 22, marginRight: 12 }}
+          />
+          Sign up with Google
         </Button>
 
         <Typography
